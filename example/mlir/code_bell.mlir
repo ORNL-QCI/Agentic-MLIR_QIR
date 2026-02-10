@@ -1,0 +1,43 @@
+module @run {
+  func.func public @jit_run() -> (tensor<f64>, tensor<f64>) attributes {llvm.emit_c_interface} {
+    %0:2 = catalyst.launch_kernel @module_bell_phi_plus::@bell_phi_plus() : () -> (tensor<f64>, tensor<f64>)
+    return %0#0, %0#1 : tensor<f64>, tensor<f64>
+  }
+  module @module_bell_phi_plus {
+    module attributes {transform.with_named_sequence} {
+      transform.named_sequence @__transform_main(%arg0: !transform.op<"builtin.module">) {
+        transform.yield 
+      }
+    }
+    func.func public @bell_phi_plus() -> (tensor<f64>, tensor<f64>) attributes {diff_method = "parameter-shift", llvm.linkage = #llvm.linkage<internal>, qnode} {
+      %c0_i64 = arith.constant 0 : i64
+      quantum.device shots(%c0_i64) ["/usr/local/lib/python3.12/dist-packages/pennylane_lightning/liblightning_qubit_catalyst.so", "LightningSimulator", "{'mcmc': False, 'num_burnin': 0, 'kernel_name': None}"]
+      %0 = quantum.alloc( 2) : !quantum.reg
+      %1 = quantum.extract %0[ 0] : !quantum.reg -> !quantum.bit
+      %out_qubits = quantum.custom "Hadamard"() %1 : !quantum.bit
+      %2 = quantum.extract %0[ 1] : !quantum.reg -> !quantum.bit
+      %out_qubits_0:2 = quantum.custom "CNOT"() %out_qubits, %2 : !quantum.bit, !quantum.bit
+      %mres, %out_qubit = quantum.measure %out_qubits_0#0 : i1, !quantum.bit
+      %mres_1, %out_qubit_2 = quantum.measure %out_qubits_0#1 : i1, !quantum.bit
+      %3 = quantum.namedobs %out_qubit[ PauliZ] : !quantum.obs
+      %4 = quantum.expval %3 : f64
+      %from_elements = tensor.from_elements %4 : tensor<f64>
+      %5 = quantum.namedobs %out_qubit_2[ PauliZ] : !quantum.obs
+      %6 = quantum.expval %5 : f64
+      %from_elements_3 = tensor.from_elements %6 : tensor<f64>
+      %7 = quantum.insert %0[ 0], %out_qubit : !quantum.reg, !quantum.bit
+      %8 = quantum.insert %7[ 1], %out_qubit_2 : !quantum.reg, !quantum.bit
+      quantum.dealloc %8 : !quantum.reg
+      quantum.device_release
+      return %from_elements, %from_elements_3 : tensor<f64>, tensor<f64>
+    }
+  }
+  func.func @setup() {
+    quantum.init
+    return
+  }
+  func.func @teardown() {
+    quantum.finalize
+    return
+  }
+}

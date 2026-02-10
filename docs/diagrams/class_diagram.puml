@@ -1,0 +1,325 @@
+@startuml MLIR_QIR_Class_Diagram
+!theme plain
+skinparam linetype ortho
+skinparam packageStyle rectangle
+
+' ========== Dialect System ==========
+package "Dialect System" {
+    abstract class BaseDialect {
+        +{abstract} name: str
+        +{abstract} can_parse(mlir_code: str): bool
+        +{abstract} parse_circuit(mlir_code: str): MLIRCircuit
+        +{abstract} parse_gates(mlir_code: str): List[GateOperation]
+        +{abstract} parse_qubits(mlir_code: str): QubitAllocation
+        +{abstract} parse_measurements(mlir_code: str): List[MeasurementOperation]
+        +{abstract} get_gate_mapping(): Dict[str, str]
+        +validate_circuit(circuit: MLIRCircuit): Tuple[bool, List[str]]
+    }
+
+    class CatalystDialect {
+        +name: str = "catalyst"
+        +GATE_MAPPING: Dict[str, str]
+        +can_parse(mlir_code: str): bool
+        +parse_circuit(mlir_code: str): MLIRCircuit
+        +parse_gates(mlir_code: str): List[GateOperation]
+        +parse_qubits(mlir_code: str): QubitAllocation
+        +parse_measurements(mlir_code: str): List[MeasurementOperation]
+        +get_gate_mapping(): Dict[str, str]
+        -_extract_qubit_variables(mlir_code: str): Dict[str, int]
+        -_parse_parameter(param_str: str): float
+    }
+
+    class QuakeDialect {
+        +name: str = "quake"
+        +GATE_MAPPING: Dict[str, str]
+        +can_parse(mlir_code: str): bool
+        +parse_circuit(mlir_code: str): MLIRCircuit
+        +parse_gates(mlir_code: str): List[GateOperation]
+        +parse_qubits(mlir_code: str): QubitAllocation
+        +parse_measurements(mlir_code: str): List[MeasurementOperation]
+        +get_gate_mapping(): Dict[str, str]
+        -_extract_qubit_variables(mlir_code: str): Dict[str, int]
+        -_parse_parameter(param_str: str): float
+    }
+
+    class DialectDetector {
+        -dialects: List[BaseDialect]
+        +detect(mlir_code: str): BaseDialect
+        +get_available_dialects(): List[str]
+        +get_dialect_by_name(name: str): BaseDialect
+        +register_dialect(dialect: BaseDialect): void
+    }
+
+    BaseDialect <|-- CatalystDialect
+    BaseDialect <|-- QuakeDialect
+    DialectDetector o-- BaseDialect
+}
+
+' ========== Data Models ==========
+package "Data Models" {
+    class MLIRCircuit {
+        +dialect_name: str
+        +num_qubits: int
+        +gates: List[GateOperation]
+        +measurements: List[MeasurementOperation]
+        +qubit_allocation: QubitAllocation
+        +has_conditionals: bool
+        +metadata: Dict[str, Any]
+    }
+
+    class GateOperation {
+        +name: str
+        +qubits: List[int]
+        +params: List[float]
+        +line_number: Optional[int]
+    }
+
+    class QubitAllocation {
+        +num_qubits: int
+        +allocation_type: str
+        +qubit_vars: Dict[str, int]
+    }
+
+    class MeasurementOperation {
+        +qubit: int
+        +result_var: str
+    }
+
+    MLIRCircuit *-- GateOperation
+    MLIRCircuit *-- QubitAllocation
+    MLIRCircuit *-- MeasurementOperation
+}
+
+' ========== Parser & Generator ==========
+package "Core Translation" {
+    class MLIRParser {
+        -dialect: Optional[BaseDialect]
+        +parse(mlir_code: str): MLIRCircuit
+        +get_detected_dialect(mlir_code: str): str
+    }
+
+    class QIRGenerator {
+        +generate(circuit: MLIRCircuit, module_id: str): str
+        -_generate_header(module_id: str): str
+        -_generate_entry_function(circuit: MLIRCircuit, function_name: str): str
+        -_generate_gate_calls(circuit: MLIRCircuit, gate_mapping: Dict): str
+        -_generate_declarations(circuit: MLIRCircuit): str
+        -_generate_attributes(circuit: MLIRCircuit): str
+        -_generate_metadata(): str
+    }
+
+    class QIRTemplates {
+        +{static} HEADER_TEMPLATE: str
+        +{static} FUNCTION_TEMPLATE: str
+        +{static} SINGLE_QUBIT_GATE: str
+        +{static} TWO_QUBIT_GATE: str
+        +{static} PARAMETERIZED_GATE: str
+        +{static} MEASUREMENT_TEMPLATE: str
+        +{static} get_qubit_pointer(index: int): str
+        +{static} get_result_pointer(index: int): str
+    }
+
+    MLIRParser --> DialectDetector
+    MLIRParser --> MLIRCircuit
+    QIRGenerator --> MLIRCircuit
+    QIRGenerator ..> QIRTemplates
+}
+
+' ========== RAG System ==========
+package "RAG System" {
+    class KnowledgeBase {
+        -client: chromadb.Client
+        -collection: chromadb.Collection
+        -embedding_function: EmbeddingFunction
+        +query(query: str, n_results: int): List[Document]
+        +add_documents(documents: List[Document]): void
+        +initialize(knowledge_dir: str, chunk_size: int, chunk_overlap: int): void
+        +get_statistics(): Dict[str, Any]
+        +count(): int
+    }
+
+    class DocumentFetcher {
+        +SOURCES: Dict[str, Dict]
+        +fetch_all(): void
+        +fetch_source(name: str, config: Dict): void
+        -_fetch_github(config: Dict): void
+        -_fetch_arxiv(config: Dict): void
+    }
+
+    class DocumentChunker {
+        +chunk_text(text: str, chunk_size: int, chunk_overlap: int): List[str]
+        +chunk_code(code: str, language: str): List[str]
+    }
+
+    class EmbeddingManager {
+        -model: SentenceTransformer
+        +embed_texts(texts: List[str]): List[List[float]]
+        +embed_query(query: str): List[float]
+    }
+
+    KnowledgeBase o-- EmbeddingManager
+    KnowledgeBase ..> DocumentChunker
+}
+
+' ========== Agent System ==========
+package "Multi-Agent System" {
+    class CrewManager {
+        -llm: BaseLLM
+        -knowledge_base: KnowledgeBase
+        -max_iterations: int
+        -translation_agent: TranslationAgent
+        -verification_agent: VerificationAgent
+        +translate(mlir_code: str, dialect: Optional[str]): TranslationResult
+        -_run_iteration(mlir_code: str, iteration: int): Tuple[str, Dict]
+    }
+
+    class TranslationAgent {
+        -llm: BaseLLM
+        -tools: List[BaseTool]
+        +role: str
+        +goal: str
+        +backstory: str
+        +translate(mlir_code: str, context: Dict): str
+    }
+
+    class VerificationAgent {
+        -llm: BaseLLM
+        -tools: List[BaseTool]
+        +role: str
+        +goal: str
+        +backstory: str
+        +verify(mlir_code: str, qir_code: str): Dict[str, Any]
+    }
+
+    class RAGTool {
+        -knowledge_base: KnowledgeBase
+        +_run(query: str): str
+    }
+
+    class GateCounterTool {
+        +_run(code: str, code_type: str): str
+    }
+
+    class SimulationTool {
+        -simulator_registry: SimulatorRegistry
+        +_run(code: str, code_type: str, shots: int): str
+    }
+
+    CrewManager o-- TranslationAgent
+    CrewManager o-- VerificationAgent
+    CrewManager --> KnowledgeBase
+    TranslationAgent --> RAGTool
+    VerificationAgent --> GateCounterTool
+    VerificationAgent --> SimulationTool
+}
+
+' ========== Verification System ==========
+package "Verification System" {
+    abstract class BaseRunner {
+        +{abstract} name: str
+        +{abstract} is_available(): bool
+        +{abstract} run(code: str, shots: int): Dict[str, int]
+    }
+
+    class QIRRunner {
+        +name: str = "qir-runner"
+        +is_available(): bool
+        +run(code: str, shots: int): Dict[str, int]
+        -_parse_results(output: str): Dict[str, int]
+    }
+
+    class CatalystRunner {
+        +name: str = "catalyst"
+        +is_available(): bool
+        +run(code: str, shots: int): Dict[str, int]
+    }
+
+    class QiskitRunner {
+        +name: str = "qiskit"
+        +is_available(): bool
+        +run(code: str, shots: int): Dict[str, int]
+    }
+
+    class SimulatorRegistry {
+        +{static} backends: Dict[str, Type[BaseRunner]]
+        +{static} get_backend(name: str): BaseRunner
+        +{static} register_backend(name: str, backend_class: Type[BaseRunner]): void
+        +{static} list_available_backends(): List[str]
+    }
+
+    class GateCounter {
+        +count_gates(code: str, code_type: str): Dict[str, int]
+        +analyze_depth(code: str, code_type: str): int
+    }
+
+    class MetricsCalculator {
+        +{static} calculate_tvd(dist1: Dict, dist2: Dict): float
+        +{static} calculate_kl_divergence(dist1: Dict, dist2: Dict): float
+        +{static} calculate_similarity(dist1: Dict, dist2: Dict): float
+    }
+
+    BaseRunner <|-- QIRRunner
+    BaseRunner <|-- CatalystRunner
+    BaseRunner <|-- QiskitRunner
+    SimulatorRegistry o-- BaseRunner
+}
+
+' ========== UI Layer ==========
+package "User Interface" {
+    class StreamlitApp {
+        +main(): void
+        +initialize_session_state(): void
+        +render_sidebar(): Dict
+        +render_translation_section(config: Dict): void
+        +render_verification_section(): void
+        +render_footer(): void
+        +load_examples(): Dict[str, str]
+    }
+
+    class LLMConfig {
+        +MODELS: Dict[str, ModelInfo]
+        +{static} get_ollama_model_name(model_key: str): str
+        +{static} estimate_vram(model_key: str): str
+    }
+
+    class ModelInfo {
+        +size: str
+        +quantization: str
+        +vram: str
+        +quality: str
+        +speed: str
+        +recommended_for: str
+        +ollama_name: str
+    }
+
+    StreamlitApp --> MLIRParser
+    StreamlitApp --> QIRGenerator
+    StreamlitApp --> LLMConfig
+    LLMConfig *-- ModelInfo
+}
+
+' ========== Configuration ==========
+package "Configuration" {
+    class Settings {
+        +LLM_MODEL: str
+        +LLM_TEMPERATURE: float
+        +LLM_BASE_URL: str
+        +EMBEDDING_MODEL: str
+        +CHROMADB_PATH: str
+        +RAG_TOP_K: int
+        +SIMULATION_SIMILARITY_THRESHOLD: float
+        +MAX_ITERATIONS: int
+        +HUGGINGFACE_TOKEN: str
+    }
+}
+
+' ========== Main Relationships ==========
+StreamlitApp ..> CrewManager : uses
+MLIRParser ..> DialectDetector : uses
+QIRGenerator ..> BaseDialect : uses
+CrewManager ..> MLIRParser : uses
+CrewManager ..> QIRGenerator : uses
+SimulationTool ..> SimulatorRegistry : uses
+RAGTool ..> KnowledgeBase : uses
+
+@enduml

@@ -1,0 +1,204 @@
+@startuml MLIR_QIR_Sequence_Diagram
+!theme plain
+skinparam sequenceMessageAlign center
+
+actor User
+participant "Streamlit UI" as UI
+participant "MLIRParser" as Parser
+participant "DialectDetector" as Detector
+participant "CatalystDialect" as Catalyst
+participant "QIRGenerator" as Generator
+participant "CrewManager" as Crew
+participant "TranslationAgent" as TransAgent
+participant "RAGTool" as RAG
+participant "KnowledgeBase" as KB
+participant "VerificationAgent" as VerifyAgent
+participant "GateCounterTool" as GateCounter
+participant "SimulationTool" as SimTool
+participant "SimulatorRegistry" as SimRegistry
+participant "QIRRunner" as Runner
+
+== User Input ==
+User -> UI: Paste MLIR code
+User -> UI: Click "Translate to QIR"
+activate UI
+
+== Dialect Detection & Parsing ==
+UI -> Parser: parse(mlir_code)
+activate Parser
+
+Parser -> Detector: detect(mlir_code)
+activate Detector
+
+Detector -> Catalyst: can_parse(mlir_code)?
+activate Catalyst
+Catalyst --> Detector: True
+deactivate Catalyst
+
+Detector --> Parser: CatalystDialect instance
+deactivate Detector
+
+Parser -> Catalyst: parse_circuit(mlir_code)
+activate Catalyst
+
+Catalyst -> Catalyst: parse_qubits(mlir_code)
+note right: Extract quantum register\nallocation (e.g., 5 qubits)
+
+Catalyst -> Catalyst: parse_gates(mlir_code)
+note right: Extract gate operations\n(Hadamard, CNOT, etc.)
+
+Catalyst -> Catalyst: parse_measurements(mlir_code)
+note right: Extract measurement\noperations
+
+Catalyst --> Parser: MLIRCircuit object
+deactivate Catalyst
+
+Parser -> Catalyst: validate_circuit(circuit)
+activate Catalyst
+Catalyst --> Parser: (True, [])
+deactivate Catalyst
+
+Parser --> UI: MLIRCircuit
+deactivate Parser
+
+== Basic QIR Generation (Without LLM) ==
+UI -> Generator: generate(circuit, "translated-circuit")
+activate Generator
+
+Generator -> Generator: _generate_header(module_id)
+note right: Create QIR module header
+
+Generator -> Catalyst: get_gate_mapping()
+activate Catalyst
+Catalyst --> Generator: Gate mapping dict
+deactivate Catalyst
+
+Generator -> Generator: _generate_entry_function(circuit)
+note right: Create main() function\nwith quantum operations
+
+Generator -> Generator: _generate_gate_calls(circuit, gate_mapping)
+note right: Convert each gate to\nQIR function call
+
+Generator -> Generator: _generate_declarations()
+note right: Add QIR function\ndeclarations
+
+Generator -> Generator: _generate_attributes()
+note right: Add QIR attributes
+
+Generator -> Generator: _generate_metadata()
+note right: Add LLVM metadata
+
+Generator --> UI: QIR code (string)
+deactivate Generator
+
+== Display Results ==
+UI -> User: Display generated QIR code
+UI -> User: Show circuit metrics\n(qubits, gates, etc.)
+deactivate UI
+
+== Alternative Flow: Multi-Agent Translation with Verification ==
+alt Using Multi-Agent System
+
+User -> UI: Enable "Use Multi-Agent\nTranslation"
+User -> UI: Click "Translate to QIR"
+activate UI
+
+UI -> Crew: translate(mlir_code, dialect="catalyst")
+activate Crew
+
+loop Max 3 Iterations
+    Crew -> TransAgent: translate(mlir_code, context)
+    activate TransAgent
+    
+    TransAgent -> RAG: Query relevant examples
+    activate RAG
+    
+    RAG -> KB: query("MLIR to QIR patterns", n_results=5)
+    activate KB
+    KB --> RAG: Relevant documents
+    deactivate KB
+    
+    RAG --> TransAgent: Context examples
+    deactivate RAG
+    
+    TransAgent -> TransAgent: Generate QIR with LLM\nusing RAG context
+    note right: LLM generates QIR code\nbased on examples and patterns
+    
+    TransAgent --> Crew: Generated QIR code
+    deactivate TransAgent
+    
+    Crew -> VerifyAgent: verify(mlir_code, qir_code)
+    activate VerifyAgent
+    
+    == Verification: Gate Counting ==
+    VerifyAgent -> GateCounter: count_gates(mlir_code, "mlir")
+    activate GateCounter
+    GateCounter --> VerifyAgent: {Hadamard: 1, CNOT: 4}
+    deactivate GateCounter
+    
+    VerifyAgent -> GateCounter: count_gates(qir_code, "qir")
+    activate GateCounter
+    GateCounter --> VerifyAgent: {h: 1, cnot: 4}
+    deactivate GateCounter
+    
+    == Verification: Simulation ==
+    VerifyAgent -> SimTool: run(qir_code, "qir", shots=1000)
+    activate SimTool
+    
+    SimTool -> SimRegistry: get_backend("qir-runner")
+    activate SimRegistry
+    SimRegistry --> SimTool: QIRRunner instance
+    deactivate SimRegistry
+    
+    SimTool -> Runner: run(qir_code, shots=1000)
+    activate Runner
+    Runner -> Runner: Execute QIR circuit
+    Runner --> SimTool: {"00000": 503, "11111": 497}
+    deactivate Runner
+    
+    SimTool --> VerifyAgent: QIR distribution
+    deactivate SimTool
+    
+    VerifyAgent -> SimTool: run(mlir_code, "mlir", shots=1000)
+    activate SimTool
+    
+    SimTool -> SimRegistry: get_backend("catalyst")
+    activate SimRegistry
+    SimRegistry --> SimTool: CatalystRunner instance
+    deactivate SimRegistry
+    
+    SimTool -> Runner: run(mlir_code, shots=1000)
+    activate Runner
+    Runner -> Runner: Execute MLIR circuit
+    Runner --> SimTool: {"00000": 498, "11111": 502}
+    deactivate Runner
+    
+    SimTool --> VerifyAgent: MLIR distribution
+    deactivate SimTool
+    
+    == Verification: Comparison ==
+    VerifyAgent -> VerifyAgent: calculate_similarity(\nqir_dist, mlir_dist)
+    note right: Compute statistical\nsimilarity (TVD, KL divergence)
+    
+    alt Verification Passed (similarity > 95%)
+        VerifyAgent --> Crew: {passed: True, similarity: 0.987}
+        note right: Translation verified!\nExit iteration loop
+    else Verification Failed
+        VerifyAgent --> Crew: {passed: False,\nfeedback: "Gate count mismatch"}
+        note right: Provide feedback for\nnext iteration
+        Crew -> TransAgent: translate with feedback
+    end
+    deactivate VerifyAgent
+end
+
+Crew --> UI: TranslationResult\n(qir_code, iterations, metrics)
+deactivate Crew
+
+UI -> User: Display verified QIR code
+UI -> User: Show verification metrics\n(similarity: 98.7%)
+UI -> User: Show iteration history
+deactivate UI
+
+end
+
+@enduml

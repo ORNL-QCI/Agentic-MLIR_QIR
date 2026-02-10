@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environment & Secrets
+.env
+.streamlit/secrets.toml
+
+# IMPORTANT: Add your .env file before running to prevent token leakage
+# Copy .env.example to .env and add your HUGGINGFACE_TOKEN
+
+# Data & Models
+data/chromadb/
+data/cache/
+logs/
+*.ckpt
+*.bin
+*.pth
+
+# Knowledge base (will be auto-fetched)
+knowledge_base/qir_specs/
+knowledge_base/mlir_docs/
+knowledge_base/research/
+
+# Keep directory structure but ignore contents
+!knowledge_base/qir_specs/.gitkeep
+!knowledge_base/mlir_docs/.gitkeep
+!knowledge_base/research/.gitkeep
+!knowledge_base/examples/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Temporary files
+*.tmp
+*.log
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini

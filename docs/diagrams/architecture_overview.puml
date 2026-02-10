@@ -1,0 +1,249 @@
+@startuml MLIR_QIR_Architecture_Overview
+!theme plain
+skinparam componentStyle rectangle
+
+' ========== User Interface Layer ==========
+package "User Interface Layer" {
+    component [Streamlit Web UI] as UI
+    component [Model Selector] as ModelSelector
+    component [Example Loader] as ExampleLoader
+    component [Visualization] as Viz
+}
+
+' ========== API/Controller Layer ==========
+package "Application Layer" {
+    component [Session Manager] as Session
+    component [Configuration Manager] as Config
+}
+
+' ========== Agent Orchestration Layer ==========
+package "Multi-Agent System" <<LLM Powered>> {
+    component [Crew Manager] as CrewManager {
+        portin translate_input
+        portout translation_output
+    }
+    
+    component [Translation Agent] as TransAgent {
+        note right: Role: MLIR to QIR Specialist\nGoal: Accurate translation\nTools: RAG, Pattern Matcher
+    }
+    
+    component [Verification Agent] as VerifyAgent {
+        note right: Role: Verification Specialist\nGoal: Validate correctness\nTools: Gate Counter, Simulator
+    }
+    
+    component [RAG Tool] as RAGTool
+    component [Gate Counter Tool] as GateCounterTool
+    component [Simulation Tool] as SimTool
+}
+
+' ========== Core Translation Layer ==========
+package "Core Translation Engine" {
+    component [MLIR Parser] as Parser {
+        portin mlir_input
+        portout circuit_output
+    }
+    
+    component [Dialect Detector] as Detector
+    
+    component [Catalyst Dialect] as Catalyst
+    component [Quake Dialect] as Quake
+    component [Future Dialects...] as FutureDialects
+    
+    component [QIR Generator] as Generator {
+        portin circuit_input
+        portout qir_output
+    }
+    
+    component [QIR Templates] as Templates
+}
+
+' ========== Knowledge & RAG Layer ==========
+package "Knowledge Base & RAG" {
+    database "ChromaDB\n(Vector Store)" as ChromaDB {
+        folder "QIR Specifications" as QIRSpecs
+        folder "MLIR Documentation" as MLIRDocs
+        folder "Gate Mappings" as GateMappings
+        folder "Translation Patterns" as Patterns
+        folder "Research Papers" as Papers
+    }
+    
+    component [Knowledge Base Manager] as KBManager
+    component [Document Fetcher] as Fetcher {
+        note right: Auto-fetches from:\n- QIR Alliance GitHub\n- PennyLane Catalyst\n- CUDA Quantum\n- arXiv papers
+    }
+    component [Embedding Manager] as Embeddings
+    component [Document Chunker] as Chunker
+}
+
+' ========== Verification & Execution Layer ==========
+package "Verification & Execution" {
+    component [Simulator Registry] as SimRegistry
+    
+    component [QIR Runner] as QIRRunner {
+        note right: Executes QIR circuits\nusing qir-runner tool
+    }
+    
+    component [Catalyst Runner] as CatalystRunner {
+        note right: Executes Catalyst MLIR\nusing PennyLane runtime
+    }
+    
+    component [Qiskit Runner] as QiskitRunner {
+        note right: Executes via\nQiskit simulator
+    }
+    
+    component [Gate Counter] as GateCounter
+    component [Metrics Calculator] as Metrics
+}
+
+' ========== External Systems ==========
+package "External Systems" {
+    component [Ollama LLM Server] as Ollama {
+        note right: Models:\n- Llama 3.1 8B\n- Llama 3.1 70B (4-bit)\n- CodeLlama 13B
+    }
+    
+    cloud "External Sources" as ExtSources {
+        component [GitHub\nQIR Alliance] as GitHub
+        component [arXiv] as ArXiv
+        component [HuggingFace] as HF
+    }
+}
+
+' ========== Data Models ==========
+package "Data Models" {
+    class MLIRCircuit {
+        +dialect_name
+        +num_qubits
+        +gates[]
+        +measurements[]
+    }
+    
+    class GateOperation
+    class QubitAllocation
+    class MeasurementOperation
+}
+
+' ========== UI Layer Connections ==========
+UI --> Session
+UI --> Config
+UI --> ModelSelector
+UI --> ExampleLoader
+UI --> Viz
+
+Session --> Parser : Direct translation
+Session --> CrewManager : Multi-agent translation
+
+' ========== Agent System Connections ==========
+CrewManager *-- TransAgent
+CrewManager *-- VerifyAgent
+CrewManager --> Parser
+CrewManager --> Generator
+
+TransAgent --> RAGTool
+TransAgent --> Ollama : LLM queries
+
+VerifyAgent --> GateCounterTool
+VerifyAgent --> SimTool
+VerifyAgent --> Ollama : LLM queries
+
+RAGTool --> KBManager
+GateCounterTool --> GateCounter
+SimTool --> SimRegistry
+
+' ========== Core Translation Connections ==========
+Parser --> Detector
+Detector --> Catalyst
+Detector --> Quake
+Detector --> FutureDialects
+
+Parser ..> MLIRCircuit : creates
+
+Generator --> Templates
+Generator <.. MLIRCircuit : uses
+
+' ========== Knowledge Base Connections ==========
+KBManager --> ChromaDB
+KBManager --> Embeddings
+KBManager --> Chunker
+
+Fetcher --> ExtSources
+Fetcher --> KBManager : populates
+
+Embeddings --> HF : sentence-transformers
+
+' ========== Verification Connections ==========
+SimRegistry --> QIRRunner
+SimRegistry --> CatalystRunner
+SimRegistry --> QiskitRunner
+
+GateCounter --> Metrics
+SimRegistry --> Metrics
+
+' ========== Configuration Flow ==========
+Config --> CrewManager : LLM settings
+Config --> KBManager : RAG settings
+Config --> SimRegistry : Verification settings
+
+' ========== Data Flow ==========
+note top of Parser
+    **Input Flow:**
+    MLIR Code → Parser → 
+    MLIRCircuit → Generator → 
+    QIR Code
+end note
+
+note top of CrewManager
+    **Agent Flow:**
+    1. TransAgent translates with RAG context
+    2. VerifyAgent validates with simulation
+    3. Iterate if verification fails (max 3x)
+    4. Return verified QIR code
+end note
+
+note top of ChromaDB
+    **Knowledge Sources:**
+    - QIR specification docs
+    - Catalyst MLIR dialect docs
+    - CUDA Quantum (Quake) docs
+    - Gate mapping examples
+    - Translation patterns
+    - Research papers (arXiv)
+end note
+
+note bottom of SimRegistry
+    **Multi-Backend Verification:**
+    - Level 1: Gate count comparison
+    - Level 2: QIR execution (qir-runner)
+    - Level 3: MLIR execution (dialect-specific)
+    - Level 4: Statistical comparison (TVD, KL)
+end note
+
+' ========== Layers ==========
+together {
+    UI
+    Session
+    Config
+}
+
+together {
+    CrewManager
+    TransAgent
+    VerifyAgent
+}
+
+together {
+    Parser
+    Generator
+}
+
+together {
+    KBManager
+    ChromaDB
+}
+
+together {
+    SimRegistry
+    QIRRunner
+    CatalystRunner
+}
+
+@enduml

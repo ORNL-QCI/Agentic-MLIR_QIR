@@ -1,0 +1,62 @@
+module @run {
+  func.func public @jit_run() -> (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) attributes {llvm.emit_c_interface} {
+    %0:4 = catalyst.launch_kernel @module_quantum_circuit::@quantum_circuit() : () -> (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>)
+    return %0#0, %0#1, %0#2, %0#3 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+  }
+  module @module_quantum_circuit {
+    module attributes {transform.with_named_sequence} {
+      transform.named_sequence @__transform_main(%arg0: !transform.op<"builtin.module">) {
+        transform.yield 
+      }
+    }
+    func.func public @quantum_circuit() -> (tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>) attributes {diff_method = "adjoint", llvm.linkage = #llvm.linkage<internal>, qnode} {
+      %cst = arith.constant 2.530000e+00 : f64
+      %c0_i64 = arith.constant 0 : i64
+      quantum.device shots(%c0_i64) ["/usr/local/lib/python3.12/dist-packages/pennylane_lightning/liblightning_qubit_catalyst.so", "LightningSimulator", "{'mcmc': False, 'num_burnin': 0, 'kernel_name': None}"]
+      %0 = quantum.alloc( 7) : !quantum.reg
+      %1 = quantum.extract %0[ 4] : !quantum.reg -> !quantum.bit
+      %out_qubits = quantum.custom "T"() %1 : !quantum.bit
+      %2 = quantum.extract %0[ 0] : !quantum.reg -> !quantum.bit
+      %out_qubits_0:2 = quantum.custom "CNOT"() %2, %out_qubits : !quantum.bit, !quantum.bit
+      %out_qubits_1 = quantum.custom "Hadamard"() %out_qubits_0#0 : !quantum.bit
+      %out_qubits_2 = quantum.custom "PauliX"() %out_qubits_1 : !quantum.bit
+      %3 = quantum.extract %0[ 1] : !quantum.reg -> !quantum.bit
+      %out_qubits_3:2 = quantum.custom "CNOT"() %out_qubits_0#1, %3 : !quantum.bit, !quantum.bit
+      %mres, %out_qubit = quantum.measure %out_qubits_3#1 : i1, !quantum.bit
+      %from_elements = tensor.from_elements %mres : tensor<i1>
+      %mres_4, %out_qubit_5 = quantum.measure %out_qubits_3#0 : i1, !quantum.bit
+      %from_elements_6 = tensor.from_elements %mres_4 : tensor<i1>
+      %4 = quantum.extract %0[ 5] : !quantum.reg -> !quantum.bit
+      %out_qubits_7 = quantum.custom "RZ"(%cst) %4 : !quantum.bit
+      %5 = quantum.extract %0[ 3] : !quantum.reg -> !quantum.bit
+      %out_qubits_8 = quantum.custom "PauliZ"() %5 : !quantum.bit
+      %6 = quantum.extract %0[ 6] : !quantum.reg -> !quantum.bit
+      %7 = quantum.extract %0[ 2] : !quantum.reg -> !quantum.bit
+      %out_qubits_9:2 = quantum.custom "CZ"() %6, %7 : !quantum.bit, !quantum.bit
+      %out_qubits_10:2 = quantum.custom "CNOT"() %out_qubits_9#1, %out_qubits_8 : !quantum.bit, !quantum.bit
+      %out_qubits_11:2 = quantum.custom "CNOT"() %out_qubits_7, %out_qubits_10#0 : !quantum.bit, !quantum.bit
+      %mres_12, %out_qubit_13 = quantum.measure %out_qubits_11#0 : i1, !quantum.bit
+      %from_elements_14 = tensor.from_elements %mres_12 : tensor<i1>
+      %mres_15, %out_qubit_16 = quantum.measure %out_qubits_9#0 : i1, !quantum.bit
+      %from_elements_17 = tensor.from_elements %mres_15 : tensor<i1>
+      %8 = quantum.insert %0[ 4], %out_qubit_5 : !quantum.reg, !quantum.bit
+      %9 = quantum.insert %8[ 3], %out_qubits_10#1 : !quantum.reg, !quantum.bit
+      %10 = quantum.insert %9[ 0], %out_qubits_2 : !quantum.reg, !quantum.bit
+      %11 = quantum.insert %10[ 5], %out_qubit_13 : !quantum.reg, !quantum.bit
+      %12 = quantum.insert %11[ 6], %out_qubit_16 : !quantum.reg, !quantum.bit
+      %13 = quantum.insert %12[ 2], %out_qubits_11#1 : !quantum.reg, !quantum.bit
+      %14 = quantum.insert %13[ 1], %out_qubit : !quantum.reg, !quantum.bit
+      quantum.dealloc %14 : !quantum.reg
+      quantum.device_release
+      return %from_elements, %from_elements_6, %from_elements_14, %from_elements_17 : tensor<i1>, tensor<i1>, tensor<i1>, tensor<i1>
+    }
+  }
+  func.func @setup() {
+    quantum.init
+    return
+  }
+  func.func @teardown() {
+    quantum.finalize
+    return
+  }
+}
