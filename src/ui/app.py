@@ -28,8 +28,14 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
-    .stApp {
-        max-width: 1400px;
+    .block-container {
+        max-width: 100% !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+    }
+    .stTextArea textarea {
+        font-family: 'Courier New', monospace;
+        font-size: 13px;
     }
     .metric-card {
         background-color: #f0f2f6;
@@ -142,7 +148,7 @@ def render_translation_section(config):
         mlir_input = st.text_area(
             "Paste MLIR circuit here (Catalyst, Quake, or other dialect)",
             value=st.session_state.mlir_input,
-            height=400,
+            height=600,
             key="mlir_text_area"
         )
 

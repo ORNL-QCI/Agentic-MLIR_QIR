@@ -31,6 +31,14 @@ class MeasurementOperation:
 
 
 @dataclass
+class ConditionalBlock:
+    """A conditional quantum operation block (from scf.if)."""
+    condition_measurement_idx: int  # Index of the measurement result that controls this
+    then_gates: List[GateOperation]  # Gates in the then branch
+    else_gates: List[GateOperation]  # Gates in the else branch (usually empty)
+
+
+@dataclass
 class MLIRCircuit:
     """Structured representation of an MLIR quantum circuit."""
     dialect_name: str
@@ -40,10 +48,17 @@ class MLIRCircuit:
     qubit_allocation: QubitAllocation
     has_conditionals: bool = False
     metadata: Dict = None
+    conditionals: List[ConditionalBlock] = None
+    # Ordered list of ("gate", GateOp) | ("measurement", MeasOp) | ("conditional", ConditionalBlock)
+    ordered_ops: List[tuple] = None
 
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
+        if self.conditionals is None:
+            self.conditionals = []
+        if self.ordered_ops is None:
+            self.ordered_ops = []
 
 
 class BaseDialect(ABC):

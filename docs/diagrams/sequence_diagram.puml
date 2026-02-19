@@ -23,7 +23,7 @@ User -> UI: Paste MLIR code
 User -> UI: Click "Translate to QIR"
 activate UI
 
-== Dialect Detection & Parsing ==
+== Dialect Detection ==
 UI -> Parser: parse(mlir_code)
 activate Parser
 
@@ -38,62 +38,79 @@ deactivate Catalyst
 Detector --> Parser: CatalystDialect instance
 deactivate Detector
 
+== SSA-Aware Parsing ==
 Parser -> Catalyst: parse_circuit(mlir_code)
 activate Catalyst
 
-Catalyst -> Catalyst: parse_qubits(mlir_code)
+Catalyst -> Catalyst: _parse_num_qubits(mlir_code)
 note right: Extract quantum register\nallocation (e.g., 5 qubits)
 
-Catalyst -> Catalyst: parse_gates(mlir_code)
-note right: Extract gate operations\n(Hadamard, CNOT, etc.)
+Catalyst -> Catalyst: _ssa_parse(mlir_code, num_qubits)
+note right #FFEECC
+    **Single-pass SSA tracking:**
+    1. arith.constant -> ssa_constants
+    2. quantum.extract -> ssa_qubit
+    3. quantum.custom -> gate + update ssa_qubit
+    4. quantum.measure -> measurement + ssa_meas_source
+    5. tensor/stablehlo ops -> propagate meas source
+    6. scf.if -> ConditionalBlock
 
-Catalyst -> Catalyst: parse_measurements(mlir_code)
-note right: Extract measurement\noperations
+    Produces ordered_ops list preserving
+    interleaved gate/measurement/conditional order.
+end note
 
-Catalyst --> Parser: MLIRCircuit object
-deactivate Catalyst
-
-Parser -> Catalyst: validate_circuit(circuit)
-activate Catalyst
-Catalyst --> Parser: (True, [])
+Catalyst --> Parser: MLIRCircuit\n(gates, measurements, conditionals, ordered_ops)
 deactivate Catalyst
 
 Parser --> UI: MLIRCircuit
 deactivate Parser
 
-== Basic QIR Generation (Without LLM) ==
-UI -> Generator: generate(circuit, "translated-circuit")
+== QIR Generation (Direct Translation) ==
+UI -> Generator: generate(circuit, "circuit")
 activate Generator
 
 Generator -> Generator: _generate_header(module_id)
-note right: Create QIR module header
-
-Generator -> Catalyst: get_gate_mapping()
-activate Catalyst
-Catalyst --> Generator: Gate mapping dict
-deactivate Catalyst
+note right: QIR module header\n+ type definitions
 
 Generator -> Generator: _generate_entry_function(circuit)
-note right: Create main() function\nwith quantum operations
+note right #CCFFCC
+    **Ordered operation emission:**
+    for (op_type, op_data) in circuit.ordered_ops:
+      "gate" -> _generate_gate_call()
+      "measurement" -> _generate_measurement()
+      "conditional" -> _generate_conditional()
 
-Generator -> Generator: _generate_gate_calls(circuit, gate_mapping)
-note right: Convert each gate to\nQIR function call
+    Gate calls include:
+    - Single-qubit: @gate(%Qubit* ptr)
+    - Two-qubit: @gate(%Qubit* ctrl, %Qubit* tgt)
+    - Parametric: @gate(double angle, %Qubit* ptr)
+end note
 
-Generator -> Generator: _generate_declarations()
-note right: Add QIR function\ndeclarations
+alt Circuit has ConditionalBlocks
+    Generator -> Generator: _generate_conditional(cond)
+    note right #FFCCCC
+        **For each ConditionalBlock:**
+        1. read_result(Result* meas_idx)
+        2. br i1 %cond, then, else
+        3. then: gate calls + br continue
+        4. else: (empty) + br continue
+        5. continue: next ops
+    end note
+end
 
-Generator -> Generator: _generate_attributes()
-note right: Add QIR attributes
+Generator -> Generator: _generate_declarations(circuit)
+note right: Gate function declarations\n+ conditional declarations\n(includes gates from conditionals)
 
-Generator -> Generator: _generate_metadata()
-note right: Add LLVM metadata
+Generator -> Generator: _generate_attributes(circuit)
+note right: QIR attributes:\nnum_qubits, num_results
 
 Generator --> UI: QIR code (string)
 deactivate Generator
 
 == Display Results ==
-UI -> User: Display generated QIR code
-UI -> User: Show circuit metrics\n(qubits, gates, etc.)
+UI -> User: Display MLIR input (left column)
+UI -> User: Display generated QIR (right column)
+UI -> User: Show circuit metrics\n(qubits, gates, params)
 deactivate UI
 
 == Alternative Flow: Multi-Agent Translation with Verification ==
@@ -109,77 +126,77 @@ activate Crew
 loop Max 3 Iterations
     Crew -> TransAgent: translate(mlir_code, context)
     activate TransAgent
-    
+
     TransAgent -> RAG: Query relevant examples
     activate RAG
-    
+
     RAG -> KB: query("MLIR to QIR patterns", n_results=5)
     activate KB
-    KB --> RAG: Relevant documents
+    KB --> RAG: Relevant documents\n(gate mappings, patterns, specs)
     deactivate KB
-    
+
     RAG --> TransAgent: Context examples
     deactivate RAG
-    
+
     TransAgent -> TransAgent: Generate QIR with LLM\nusing RAG context
     note right: LLM generates QIR code\nbased on examples and patterns
-    
+
     TransAgent --> Crew: Generated QIR code
     deactivate TransAgent
-    
+
     Crew -> VerifyAgent: verify(mlir_code, qir_code)
     activate VerifyAgent
-    
+
     == Verification: Gate Counting ==
-    VerifyAgent -> GateCounter: count_gates(mlir_code, "mlir")
+    VerifyAgent -> GateCounter: count_mlir_gates(mlir_code)
     activate GateCounter
     GateCounter --> VerifyAgent: {Hadamard: 1, CNOT: 4}
     deactivate GateCounter
-    
-    VerifyAgent -> GateCounter: count_gates(qir_code, "qir")
+
+    VerifyAgent -> GateCounter: count_qir_gates(qir_code)
     activate GateCounter
     GateCounter --> VerifyAgent: {h: 1, cnot: 4}
     deactivate GateCounter
-    
+
     == Verification: Simulation ==
     VerifyAgent -> SimTool: run(qir_code, "qir", shots=1000)
     activate SimTool
-    
+
     SimTool -> SimRegistry: get_backend("qir-runner")
     activate SimRegistry
     SimRegistry --> SimTool: QIRRunner instance
     deactivate SimRegistry
-    
+
     SimTool -> Runner: run(qir_code, shots=1000)
     activate Runner
     Runner -> Runner: Execute QIR circuit
     Runner --> SimTool: {"00000": 503, "11111": 497}
     deactivate Runner
-    
+
     SimTool --> VerifyAgent: QIR distribution
     deactivate SimTool
-    
+
     VerifyAgent -> SimTool: run(mlir_code, "mlir", shots=1000)
     activate SimTool
-    
+
     SimTool -> SimRegistry: get_backend("catalyst")
     activate SimRegistry
     SimRegistry --> SimTool: CatalystRunner instance
     deactivate SimRegistry
-    
+
     SimTool -> Runner: run(mlir_code, shots=1000)
     activate Runner
     Runner -> Runner: Execute MLIR circuit
     Runner --> SimTool: {"00000": 498, "11111": 502}
     deactivate Runner
-    
+
     SimTool --> VerifyAgent: MLIR distribution
     deactivate SimTool
-    
+
     == Verification: Comparison ==
-    VerifyAgent -> VerifyAgent: calculate_similarity(\nqir_dist, mlir_dist)
+    VerifyAgent -> VerifyAgent: compute_distribution_similarity(\nqir_dist, mlir_dist)
     note right: Compute statistical\nsimilarity (TVD, KL divergence)
-    
+
     alt Verification Passed (similarity > 95%)
         VerifyAgent --> Crew: {passed: True, similarity: 0.987}
         note right: Translation verified!\nExit iteration loop
