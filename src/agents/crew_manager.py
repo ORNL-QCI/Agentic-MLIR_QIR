@@ -1,176 +1,301 @@
 """CrewAI orchestration for multi-agent translation system."""
 
-from crewai import Crew, Task
-from typing import Optional
 import logging
+import re
+from typing import Optional
 
 from .translation_agent import TranslationAgent
 from .verification_agent import VerificationAgent
 from ..tools.rag_tool import RAGTool
 from ..tools.gate_counter_tool import GateCounterTool
+from ..tools.web_fetch_tool import get_web_tools
 
 logger = logging.getLogger(__name__)
 
+# Namespace prefixes that belong to standard MLIR dialects — excluded from
+# unknown-dialect detection.
+_KNOWN_NAMESPACES = {
+    'quantum', 'quake', 'func', 'scf', 'arith', 'tensor',
+    'stablehlo', 'cc', 'memref', 'cf', 'llvm', 'oq3',
+}
+
 
 class TranslationResult:
-    """Result from translation process."""
+    """Result from the translation + verification process."""
 
     def __init__(self):
         self.qir_code: Optional[str] = None
-        self.verification: Optional[dict] = None
+        self.verification: Optional[dict] = None        # agent-level check (lightweight)
+        self.verification_result: Optional[dict] = None # full 4-level pipeline result
         self.iterations: int = 0
         self.iteration_history: list = []
         self.success: bool = False
         self.error_message: Optional[str] = None
+        self.translation_path: str = "deterministic"   # deterministic | ai_agent | deterministic+repair
+        self.dialect: Optional[str] = None
 
 
 class CrewManager:
-    """Manages multi-agent translation workflow."""
+    """Manages multi-agent translation + verification workflow."""
 
     def __init__(self, llm, knowledge_base=None, max_iterations: int = 3, verbose: bool = True):
-        """Initialize crew manager.
-
-        Args:
-            llm: Language model to use
-            knowledge_base: KnowledgeBase instance
-            max_iterations: Maximum refinement iterations
-            verbose: Whether to show verbose output
-        """
         self.llm = llm
         self.max_iterations = max_iterations
         self.verbose = verbose
 
-        # Initialize tools
+        # Tools
         self.rag_tool = RAGTool(knowledge_base=knowledge_base)
         self.gate_counter_tool = GateCounterTool()
+        self.web_tools = get_web_tools()
 
-        # Initialize agents
+        # Agents (translation starts with only RAG; web tools attached on demand)
         self.translation_agent = TranslationAgent(
             llm=llm,
             tools=[self.rag_tool],
-            verbose=verbose
+            verbose=verbose,
         )
-
         self.verification_agent = VerificationAgent(
             llm=llm,
             tools=[self.gate_counter_tool],
-            verbose=verbose
+            verbose=verbose,
         )
 
-        logger.info("CrewManager initialized")
+        logger.info("CrewManager initialised")
 
-    def translate(self, mlir_code: str, dialect: Optional[str] = None) -> TranslationResult:
-        """Execute translation with iterative refinement.
+    # ------------------------------------------------------------------ #
+    #  Main entry point                                                    #
+    # ------------------------------------------------------------------ #
 
-        Args:
-            mlir_code: MLIR source code
-            dialect: MLIR dialect (if known)
+    def translate_with_verification(
+        self,
+        mlir_code: str,
+        shots: int = 1000,
+    ) -> TranslationResult:
+        """Full pipeline: dialect routing → QIR generation → verification loop.
 
-        Returns:
-            TranslationResult with QIR and verification info
+        Known dialects (Catalyst / Quake):
+            1. Deterministic QIR via MLIRParser + QIRGenerator
+            2. Verify; if FAIL → agent repairs up to max_iterations times
+
+        Unknown dialects:
+            1. Translation Specialist with web-search tools generates QIR agentically
+            2. Verify; if FAIL → agent retranslates with feedback
         """
+        from src.parsers.mlir_parser import MLIRParser
+        from src.generators.qir_generator import QIRGenerator
+        from src.dialects.base_dialect import UnsupportedDialectError
+        from src.verification.pipeline import run_verification_pipeline
+
         result = TranslationResult()
 
-        logger.info(f"Starting translation (max iterations: {self.max_iterations})...")
+        # ---- Phase 0: dialect detection --------------------------------
+        try:
+            detected_dialect = MLIRParser().get_detected_dialect(mlir_code)
+            is_known = True
+        except UnsupportedDialectError:
+            detected_dialect = self._infer_dialect_hint(mlir_code)
+            is_known = False
+
+        result.dialect = detected_dialect
+
+        # ---- Phase 1: initial QIR generation ---------------------------
+        if is_known:
+            try:
+                circuit = MLIRParser().parse(mlir_code)
+                qir_code = QIRGenerator().generate(circuit, module_id="translated-circuit")
+                result.translation_path = "deterministic"
+            except Exception as e:
+                result.error_message = f"Deterministic parse failed: {e}"
+                logger.error(result.error_message)
+                return result
+        else:
+            self._attach_web_tools()
+            try:
+                qir_code = self.translation_agent.translate_with_feedback(
+                    mlir_code, dialect=detected_dialect, iteration=1
+                )
+                result.translation_path = "ai_agent"
+            except Exception as e:
+                result.error_message = f"Agentic translation failed: {e}"
+                logger.error(result.error_message)
+                return result
+
+        # ---- Phase 2: verification + refinement loop -------------------
+        feedback_str: Optional[str] = None
+        previous_qir: Optional[str] = None
+
+        for iteration in range(1, self.max_iterations + 1):
+            logger.info(f"=== Verification iteration {iteration}/{self.max_iterations} ===")
+
+            # Full 4-level deterministic check
+            vr = run_verification_pipeline(mlir_code, qir_code, shots)
+            result.verification_result = vr
+
+            # Lightweight agent-based gate check
+            try:
+                agent_check = self.verification_agent.verify(mlir_code, qir_code)
+            except Exception as e:
+                logger.warning(f"Verification agent failed: {e}; using deterministic results only")
+                agent_check = {'passed': False, 'gate_count_match': False, 'feedback': ''}
+
+            result.verification = agent_check
+            result.iterations = iteration
+
+            gate_ok = vr['gate_comparison'].get('matches', False)
+            tvd_ok = vr['similarity_passes']
+
+            result.iteration_history.append({
+                'iteration': iteration,
+                'qir_code': qir_code,
+                'gate_match': gate_ok,
+                'tvd_pass': tvd_ok,
+                'agent_feedback': agent_check.get('feedback'),
+                'verification': vr,
+            })
+
+            if gate_ok and tvd_ok:
+                logger.info(f"✓ Verification PASSED in {iteration} iteration(s)")
+                result.success = True
+                result.qir_code = qir_code
+                return result
+
+            if iteration == self.max_iterations:
+                logger.warning(f"Max iterations ({self.max_iterations}) reached without passing")
+                break
+
+            # Build feedback and retry
+            feedback_str = self._build_feedback_string(vr, agent_check)
+            logger.info(f"Feedback for iteration {iteration + 1}:\n{feedback_str}")
+            previous_qir = qir_code
+
+            if is_known:
+                result.translation_path = "deterministic+repair"
+
+            try:
+                qir_code = self.translation_agent.translate_with_feedback(
+                    mlir_code,
+                    dialect=detected_dialect,
+                    feedback=feedback_str,
+                    previous_qir=previous_qir,
+                    iteration=iteration + 1,
+                )
+            except Exception as e:
+                logger.error(f"Agent repair failed on iteration {iteration + 1}: {e}")
+                break
+
+        result.qir_code = qir_code
+        result.error_message = (
+            f"Did not pass full verification after {result.iterations} iteration(s)"
+        )
+        return result
+
+    # ------------------------------------------------------------------ #
+    #  Legacy method (kept for backward compatibility)                     #
+    # ------------------------------------------------------------------ #
+
+    def translate(self, mlir_code: str, dialect: Optional[str] = None) -> TranslationResult:
+        """Execute translation with iterative refinement (legacy, agent-only path)."""
+        result = TranslationResult()
+        result.dialect = dialect
 
         for iteration in range(1, self.max_iterations + 1):
             logger.info(f"=== Iteration {iteration}/{self.max_iterations} ===")
 
-            # Translation
-            logger.info("Translating MLIR to QIR...")
             try:
                 qir_code = self.translation_agent.translate(mlir_code, dialect)
                 result.qir_code = qir_code
             except Exception as e:
-                logger.error(f"Translation error: {e}")
-                result.error_message = f"Translation failed: {str(e)}"
+                result.error_message = f"Translation failed: {e}"
                 return result
 
-            # Verification
-            logger.info("Verifying translation...")
             try:
                 verification = self.verification_agent.verify(mlir_code, qir_code)
                 result.verification = verification
             except Exception as e:
-                logger.error(f"Verification error: {e}")
-                verification = {
-                    'passed': False,
-                    'feedback': f"Verification error: {str(e)}"
-                }
+                verification = {'passed': False, 'feedback': f"Verification error: {e}"}
                 result.verification = verification
 
-            # Record iteration
             result.iteration_history.append({
                 'iteration': iteration,
                 'qir_code': qir_code,
-                'verification': verification
+                'verification': verification,
             })
-
             result.iterations = iteration
 
-            # Check if passed
             if verification.get('passed', False):
-                logger.info(f"✓ Translation verified successfully in {iteration} iteration(s)!")
+                logger.info(f"✓ Translation verified in {iteration} iteration(s)")
                 result.success = True
                 return result
 
-            # Prepare for next iteration
             if iteration < self.max_iterations:
-                logger.info(f"Verification failed. Feedback: {verification.get('feedback')}")
-                logger.info("Refining translation...")
-
-                # In a full implementation, we would pass feedback back to translation agent
-                # For now, we'll just retry
-            else:
-                logger.warning(f"Max iterations ({self.max_iterations}) reached without passing verification")
-                result.error_message = f"Failed to verify after {self.max_iterations} iterations"
+                logger.info(f"Feedback: {verification.get('feedback')}")
+        else:
+            result.error_message = f"Failed to verify after {self.max_iterations} iterations"
 
         return result
 
-    def translate_with_crew(self, mlir_code: str) -> str:
-        """Alternative: Use CrewAI's native task system.
+    # ------------------------------------------------------------------ #
+    #  Private helpers                                                     #
+    # ------------------------------------------------------------------ #
 
-        Args:
-            mlir_code: MLIR source code
+    def _build_feedback_string(self, vr: dict, agent_check: dict) -> str:
+        """Synthesise deterministic + agent verification into repair instructions."""
+        parts = []
 
-        Returns:
-            QIR code
-        """
-        # Define tasks
-        translation_task = Task(
-            description=f"""
-            Translate this MLIR circuit to QIR:
-            {mlir_code}
+        gate_comp = vr.get('gate_comparison', {})
+        if not gate_comp.get('matches', True):
+            parts.append("GATE COUNT MISMATCH:")
+            for disc in gate_comp.get('discrepancies', []):
+                parts.append(
+                    f"  Gate '{disc['gate']}': MLIR has {disc['mlir_count']}, "
+                    f"QIR has {disc['qir_count']} (diff {disc['difference']:+d})"
+                )
+            missing = [
+                d['gate'] for d in gate_comp.get('discrepancies', [])
+                if d.get('mlir_count', 0) > d.get('qir_count', 0)
+            ]
+            extra = [
+                d['gate'] for d in gate_comp.get('discrepancies', [])
+                if d.get('qir_count', 0) > d.get('mlir_count', 0)
+            ]
+            if missing:
+                parts.append(f"  Missing in QIR: {', '.join(missing)}")
+            if extra:
+                parts.append(f"  Extra in QIR (remove): {', '.join(extra)}")
 
-            Use knowledge base for gate mappings.
-            Return complete QIR code.
-            """,
-            agent=self.translation_agent.agent,
-            expected_output="Complete QIR code"
-        )
+        if not vr.get('similarity_passes', True):
+            sim_pct = vr.get('similarity', 0) * 100
+            parts.append(
+                f"SIMULATION MISMATCH: TVD similarity is {sim_pct:.1f}% (need >= 95%). "
+                "The quantum operations are producing a different probability distribution "
+                "than the MLIR circuit. Check gate order, parameters, and qubit indexing."
+            )
 
-        verification_task = Task(
-            description="""
-            Verify the QIR translation using gate counting.
-            Ensure all gates match the MLIR circuit.
-            """,
-            agent=self.verification_agent.agent,
-            expected_output="Verification result (PASS/FAIL)",
-            context=[translation_task]
-        )
+        agent_fb = agent_check.get('feedback', '')
+        if agent_fb and agent_fb.lower() not in ('translation verified', ''):
+            parts.append(f"AGENT ANALYSIS: {agent_fb}")
 
-        # Create crew
-        crew = Crew(
-            agents=[
-                self.translation_agent.agent,
-                self.verification_agent.agent
-            ],
-            tasks=[translation_task, verification_task],
-            verbose=self.verbose
-        )
+        return "\n".join(parts) if parts else "Unknown verification failure."
 
-        # Execute
-        logger.info("Executing crew...")
-        result = crew.kickoff()
+    def _attach_web_tools(self) -> None:
+        """Append web-search tools to the translation agent (idempotent)."""
+        if not self.web_tools:
+            return
+        current = list(self.translation_agent.agent.tools or [])
+        current_names = {t.name for t in current}
+        for tool in self.web_tools:
+            if tool.name not in current_names:
+                current.append(tool)
+                current_names.add(tool.name)
+        self.translation_agent.agent.tools = current
+        logger.debug(f"Translation agent tools: {[t.name for t in current]}")
 
-        return result
+    @staticmethod
+    def _infer_dialect_hint(mlir_code: str) -> str:
+        """Scan MLIR for the most common unknown namespace prefix."""
+        prefixes = re.findall(r'\b([a-z][a-z0-9_]*)\.', mlir_code)
+        counts: dict = {}
+        for p in prefixes:
+            if p not in _KNOWN_NAMESPACES:
+                counts[p] = counts.get(p, 0) + 1
+        return max(counts, key=counts.get) if counts else "unknown"

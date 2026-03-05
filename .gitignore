@@ -34,10 +34,14 @@ MANIFEST
 # Data & Models
 data/chromadb/
 data/cache/
+chroma_db/
 logs/
 *.ckpt
 *.bin
 *.pth
+
+# Translation / session logs (auto-generated at runtime)
+logs/translations.jsonl
 
 # Knowledge base (will be auto-fetched)
 knowledge_base/qir_specs/
@@ -74,6 +78,15 @@ htmlcov/
 *.log
 .cache/
 
+# API keys / secrets
+*.key
+secrets.json
+.secrets
+
+# HuggingFace / model cache
+.huggingface/
+model_cache/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -91,3 +104,5 @@ docs/*.synctex.gz
 docs/*.toc
 docs/*.vrb
 docs/*.pdf
+# LaTeX Workshop output subdirectory
+docs/%OUTDIR%/

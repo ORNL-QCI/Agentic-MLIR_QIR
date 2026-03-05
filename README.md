@@ -94,61 +94,251 @@ graph TB
 | **Translation Agent** | LLM-powered MLIR→QIR conversion | ✅ Complete |
 | **Verification Agent** | Multi-level validation (gate count, simulation) | ✅ Complete |
 | **QIR Generator** | Template-based QIR code generation | ✅ Complete |
-| **Streamlit UI** | Interactive web interface | ✅ Complete |
+| **QIR Execution** | `qirrunner` Python package — real sparse simulator (qir-alliance) | ✅ Complete |
+| **MLIR Execution** | PennyLane Catalyst `@catalyst.qjit` + `lightning.qubit` | ✅ Complete |
+| **Streamlit UI** | Interactive web interface with distribution bar charts | ✅ Complete |
 
 ---
 
 ## 💡 Usage Examples
 
-### Command Line
+There are three ways to use the translator: the **CLI** (`translate.py`), the **Web UI**, and the **Python API**.
+
+---
+
+## 🖥️ Command-Line Interface (CLI)
+
+`translate.py` is the developer-facing CLI. It accepts MLIR from a file or stdin and prints QIR to stdout (or a file), with all metadata — dialect, gate counts, verification results — on stderr so stdout stays clean for piping.
+
+### Quick examples
+
+```bash
+# Translate a file — metadata to stderr, QIR to stdout
+python translate.py examples/mlir/bell_state.mlir
+
+# Read from stdin (pipe-friendly)
+cat examples/mlir/bell_state.mlir | python translate.py -
+
+# Save QIR to a file — metadata goes to stdout instead
+python translate.py examples/mlir/bell_state.mlir -o circuit.ll
+
+# Translate and pipe QIR directly into another tool
+python translate.py circuit.mlir > circuit.ll
+```
+
+### Skip simulation (gate comparison only — much faster)
+
+```bash
+python translate.py examples/mlir/bell_state.mlir --no-verify
+python translate.py examples/mlir/ghz_state.mlir  --no-verify -o ghz.ll
+```
+
+### Agentic pipeline (with LLM + verification loop)
+
+```bash
+# Use a local Ollama model (must have `ollama serve` running)
+python translate.py circuit.mlir --model llama3.1-8b
+python translate.py circuit.mlir --model llama3.1-8b --max-iterations 5
+
+# Use the free GPT-OSS model via HuggingFace (no GPU required)
+export HF_TOKEN=hf_...      # one-time setup — free at huggingface.co/settings/tokens
+python translate.py circuit.mlir --model gpt-oss-20b
+
+# Unknown / custom MLIR dialect — agent researches the spec then translates
+python translate.py my_custom_dialect.mlir --model llama3.1-8b
+```
+
+### JSON output (for scripting / CI)
+
+All fields — QIR code, gate counts, verification, timing — are emitted as a single JSON object.
+
+```bash
+# Full JSON output to stdout
+python translate.py circuit.mlir --json
+
+# Parse with jq
+python translate.py circuit.mlir --json | jq '.gate_comparison.mlir_gates'
+python translate.py circuit.mlir --json | jq '.verification.similarity'
+python translate.py circuit.mlir --json | jq -r '.qir' > circuit.ll
+
+# Check exit code in a pipeline
+python translate.py circuit.mlir --json && echo "Translation verified"
+```
+
+JSON output shape:
+
+```json
+{
+  "qir":               "<QIR LLVM IR string>",
+  "dialect":           "catalyst",
+  "translation_path":  "deterministic",
+  "translation_time_s": 0.065,
+  "iterations":        1,
+  "success":           true,
+  "error_message":     null,
+  "gate_comparison": {
+    "matches":    true,
+    "mlir_total": 2,
+    "qir_total":  2,
+    "mlir_gates": {"h": 1, "cnot": 1},
+    "qir_gates":  {"h": 1, "cnot": 1},
+    "discrepancies": []
+  },
+  "verification": {
+    "similarity":        0.997,
+    "similarity_passes": true,
+    "qir_is_mock":       false,
+    "catalyst_is_mock":  false,
+    "qir_distribution":  {"00": 501, "11": 499},
+    "catalyst_distribution": {"00": 498, "11": 502}
+  }
+}
+```
+
+### Quiet mode (pure QIR, no metadata)
+
+```bash
+# Only QIR is printed — nothing else
+python translate.py circuit.mlir --quiet
+python translate.py circuit.mlir -q > circuit.ll
+```
+
+### List available LLM models
+
+```bash
+python translate.py --list-models
+```
+
+```
+Available model keys:
+
+  llama3.1-70b-q4   [ollama]        70B, medium
+    Use case:  production
+    Setup:     ollama pull llama3.1:70b-instruct-q4_K_M
+
+  llama3.1-8b       [ollama]        8B, fast
+    Setup:     ollama pull llama3.1:8b-instruct
+
+  gpt-oss-20b       [huggingface]   20B, fast  (free tier)
+    Setup:     export HF_TOKEN=hf_...
+```
+
+### Full flag reference
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `FILE \| -` | — | MLIR file path, or `-` to read from stdin |
+| `-o FILE` / `--output FILE` | stdout | Write QIR to a file; metadata goes to stdout |
+| `--model MODEL_KEY` | *(none)* | Enable agentic pipeline with this model (see `--list-models`) |
+| `--max-iterations N` | `3` | Max agent refinement iterations (requires `--model`) |
+| `--shots N` | `1000` | Simulation shots for TVD verification |
+| `--no-verify` | off | Skip quantum simulation; gate comparison still shown |
+| `--json` | off | Output everything as JSON to stdout |
+| `--quiet` / `-q` | off | Suppress metadata — only QIR is printed |
+| `--no-colour` | off | Disable ANSI colour codes |
+| `--list-models` | — | Print available model keys and exit |
+
+### Output stream behaviour
+
+| Scenario | QIR goes to | Metadata goes to |
+|----------|-------------|-----------------|
+| `python translate.py file.mlir` | stdout | **stderr** (piping `> out.ll` still shows metadata) |
+| `python translate.py file.mlir -o out.ll` | `out.ll` | **stdout** |
+| `python translate.py file.mlir --json` | stdout (JSON field) | stdout (JSON) |
+| `python translate.py file.mlir -q` | stdout | *(suppressed)* |
+
+### Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Translation verified (gate match + TVD ≥ 95%) |
+| `1` | Translation done but verification failed, or unexpected error |
+| `2` | Unrecognised MLIR dialect (use `--model` to enable the agent) |
+| `130` | Aborted with Ctrl-C |
+
+---
+
+## 🌐 Web UI
+
+### Streamlit UI
+
+1. Launch: `streamlit run src/ui/app.py`
+2. Select LLM model from sidebar (local Ollama or free HuggingFace)
+3. Load example or paste MLIR code
+4. Click **Translate to QIR**
+5. View **Translation Time**, **Iterations**, and **Translation Path** metrics
+6. Open **Verification Results** expander to see:
+   - Pass/fail banner (TVD ≥ 95% + gate match)
+   - Side-by-side QIR vs MLIR distribution bar charts
+   - TVD similarity score (real execution at 1,000 shots)
+   - Per-gate MLIR vs QIR comparison table
+7. Download generated `.ll` file
+
+---
+
+## 🐍 Python API
+
+### Deterministic (no LLM)
 
 ```python
 from src.parsers.mlir_parser import MLIRParser
 from src.generators.qir_generator import QIRGenerator
 
-# Parse MLIR circuit (auto-detects dialect)
 parser = MLIRParser()
+detected_dialect = parser.get_detected_dialect(mlir_code)   # "catalyst" | "quake"
 circuit = parser.parse(mlir_code)
 
-print(f"Detected: {parser.get_detected_dialect()}")
+print(f"Detected: {detected_dialect}")
 print(f"Qubits: {circuit.num_qubits}, Gates: {len(circuit.gates)}")
 
-# Generate QIR
-generator = QIRGenerator()
-qir_code = generator.generate(circuit, module_id="my-circuit")
-
+qir_code = QIRGenerator().generate(circuit, module_id="my-circuit")
 print(qir_code)
 ```
 
 ### With Multi-Agent System
 
 ```python
+from crewai.llm import LLM
 from src.agents.crew_manager import CrewManager
-from src.rag.knowledge_base import KnowledgeBase
-from langchain_community.llms import Ollama
 
-# Initialize
-llm = Ollama(model="llama3.1:8b-instruct")
-kb = KnowledgeBase()
-crew = CrewManager(llm=llm, knowledge_base=kb, max_iterations=3)
+# Ollama (local)
+llm = LLM(model="ollama/llama3.1:8b-instruct", base_url="http://localhost:11434")
 
-# Translate with verification
-result = crew.translate(mlir_code, dialect="catalyst")
+# HuggingFace free tier
+# llm = LLM(model="huggingface/openai/gpt-oss-20b", api_key=os.environ["HF_TOKEN"])
+
+crew = CrewManager(llm=llm, max_iterations=3)
+
+# Full pipeline: translate → verify → repair loop
+result = crew.translate_with_verification(mlir_code, shots=1000)
 
 if result.success:
     print(f"✓ Verified in {result.iterations} iteration(s)")
+    print(f"  Path: {result.translation_path}")   # deterministic | ai_agent | deterministic+repair
     print(result.qir_code)
 else:
-    print(f"✗ Failed: {result.error_message}")
+    print(f"⚠ Done (verification did not fully pass): {result.error_message}")
+    print(result.qir_code)   # best attempt still available
+
+# Access full verification data
+vr = result.verification_result
+if vr:
+    print(f"TVD similarity: {vr['similarity']:.1%}")
+    print(f"Gate match:     {vr['gate_comparison']['matches']}")
 ```
 
-### Streamlit UI
+### Verification pipeline standalone
 
-1. Launch: `streamlit run src/ui/app.py`
-2. Select LLM model from sidebar
-3. Load example or paste MLIR code
-4. Click "Translate to QIR"
-5. View results, verification metrics, download QIR
+```python
+from src.verification.pipeline import run_verification_pipeline
+
+vr = run_verification_pipeline(mlir_code, qir_code, shots=1000)
+
+print(f"Gates match : {vr['gate_comparison']['matches']}")
+print(f"TVD         : {vr['similarity']:.1%}  ({'PASS' if vr['similarity_passes'] else 'FAIL'})")
+print(f"QIR dist    : {vr['qir_distribution']}")
+print(f"MLIR dist   : {vr['catalyst_distribution']}")
+```
 
 ---
 
@@ -177,11 +367,16 @@ HUGGINGFACE_TOKEN=your_token_here
 
 ### Model Selection
 
-| Model | VRAM | Speed | Quality | Use Case |
-|-------|------|-------|---------|----------|
-| `llama3.1:8b-instruct` | ~8GB | Fast | Good | Development, testing |
-| `llama3.1:70b-instruct-q4_K_M` | ~40GB | Medium | Excellent | Production quality |
-| `codellama:13b` | ~13GB | Medium | Very Good | Code-heavy tasks |
+| Model key | Backend | VRAM | Speed | Quality | Setup |
+|-----------|---------|------|-------|---------|-------|
+| `llama3.1-8b` | Ollama (local) | ~8 GB | Fast | Good | `ollama pull llama3.1:8b-instruct` |
+| `llama3.1-70b-q4` | Ollama (local) | ~40 GB | Medium | Excellent | `ollama pull llama3.1:70b-instruct-q4_K_M` |
+| `codellama-13b` | Ollama (local) | ~13 GB | Medium | Very Good | `ollama pull codellama:13b` |
+| `codellama-34b-q4` | Ollama (local) | ~20 GB | Medium-slow | Excellent | `ollama pull codellama:34b-instruct-q4_K_M` |
+| `gpt-oss-20b` | HuggingFace API ☁️ | None (cloud) | Fast | Very Good | `export HF_TOKEN=hf_...` (free) |
+
+Pass the **model key** to `--model` on the CLI or to `LLMConfig.get_model_info()` in Python.
+HuggingFace models require a free token from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) — no GPU needed.
 
 ---
 
@@ -189,60 +384,61 @@ HUGGINGFACE_TOKEN=your_token_here
 
 ```
 agentic_mlir_qir_updated/
+├── translate.py             # ← CLI entry point (python translate.py ...)
 ├── src/
 │   ├── config/              # Configuration management
-│   │   ├── settings.py      # Pydantic settings
-│   │   └── llm_config.py    # Multi-model LLM configs
+│   │   ├── settings.py      # Pydantic settings (env vars / .env)
+│   │   └── llm_config.py    # Multi-model LLM configs (Ollama + HuggingFace)
 │   ├── dialects/            # Extensible dialect system
-│   │   ├── base_dialect.py  # Abstract interface
+│   │   ├── base_dialect.py  # Abstract interface + UnsupportedDialectError
 │   │   ├── catalyst_dialect.py  # PennyLane Catalyst
-│   │   ├── quake_dialect.py     # CUDA Quantum
+│   │   ├── quake_dialect.py     # CUDA Quantum / Quake
 │   │   └── dialect_detector.py  # Auto-detection
 │   ├── parsers/             # MLIR parsing
 │   │   └── mlir_parser.py
 │   ├── generators/          # QIR generation
 │   │   ├── qir_generator.py
 │   │   └── templates.py
-│   ├── agents/              # CrewAI multi-agent system
-│   │   ├── translation_agent.py
-│   │   ├── verification_agent.py
-│   │   └── crew_manager.py
+│   ├── agents/              # CrewAI multi-agent system (crewai 1.x)
+│   │   ├── translation_agent.py  # TranslationAgent + translate_with_feedback()
+│   │   ├── verification_agent.py # VerificationAgent (lightweight gate check)
+│   │   └── crew_manager.py       # CrewManager — orchestrates full pipeline
 │   ├── tools/               # Agent tools
-│   │   ├── rag_tool.py
-│   │   ├── gate_counter_tool.py
-│   │   └── simulation_tool.py
-│   ├── rag/                 # RAG system
+│   │   ├── rag_tool.py           # RAG knowledge-base retrieval
+│   │   ├── gate_counter_tool.py  # Gate count comparison
+│   │   └── web_fetch_tool.py     # Web fetch for unknown-dialect research
+│   ├── rag/                 # RAG system (ChromaDB + HF embeddings)
 │   │   ├── knowledge_base.py
 │   │   ├── fetcher.py
 │   │   ├── embeddings.py
 │   │   └── chunking.py
-│   ├── verification/        # Multi-level verification
+│   ├── verification/        # Multi-level verification pipeline
+│   │   ├── pipeline.py          # run_verification_pipeline() — shared entry point
 │   │   ├── simulator_registry.py
-│   │   ├── qir_runner.py
-│   │   ├── gate_counter.py
-│   │   └── metrics.py
-│   └── ui/                  # Streamlit interface
+│   │   ├── qir_runner.py        # qirrunner 0.9.1 — real QIR execution
+│   │   ├── catalyst_runner.py   # pennylane-catalyst 0.14.0 — real MLIR execution
+│   │   ├── quake_runner.py      # cudaq — Quake dialect execution
+│   │   ├── gate_counter.py      # Catalyst + Quake gate counting
+│   │   └── metrics.py           # TVD similarity, VerificationThresholds
+│   └── ui/                  # Streamlit web interface
 │       └── app.py
 ├── knowledge_base/          # Auto-populated documentation
-│   ├── qir_specs/          # QIR Alliance specs
-│   ├── mlir_docs/          # Catalyst, Quake docs
-│   ├── examples/           # Gate mappings, patterns
-│   └── research/           # Research papers
+│   ├── qir_specs/
+│   ├── mlir_docs/
+│   ├── examples/
+│   └── research/
 ├── examples/
-│   ├── mlir/               # Example MLIR circuits
+│   ├── mlir/               # Example MLIR circuits (Catalyst + Quake)
 │   └── qir/                # Generated QIR outputs
 ├── scripts/
-│   ├── setup_llm.sh        # Pull LLM models
+│   ├── setup_llm.sh        # Pull Ollama LLM models
 │   ├── fetch_knowledge.py  # Download documentation
 │   └── initialize_db.py    # Setup ChromaDB
 ├── tests/                  # Test suite
-├── .env.example           # Environment template
-├── .gitignore             # Git ignore rules
-├── requirements.txt       # Python dependencies
-└── README.md             # This file
+├── .env.example            # Environment template
+├── requirements.txt        # Python dependencies
+└── README.md               # This file
 ```
-
-**Total Implementation**: 3,766 lines of production code
 
 ---
 
@@ -296,14 +492,15 @@ Register in `src/dialects/dialect_detector.py`.
 - ✓ Qubit count verification
 
 ### Level 2: QIR Execution
-- ✓ Run with qir-runner (if available)
-- ✓ Fallback to Qiskit simulation
-- ✓ Measurement distribution extraction
+- ✓ `qirrunner` Python package (qir-alliance) — real sparse simulator
+- ✓ Pre-built wheel — no LLVM installation required
+- ✓ Auto-injects terminal measurements when QIR has none
+- ✓ Physics-correct mock fallback if unavailable
 
 ### Level 3: MLIR Execution
-- ✓ Catalyst runtime for Catalyst dialect
-- ✓ CUDA Quantum for Quake dialect
-- ✓ Measurement distribution extraction
+- ✓ PennyLane Catalyst (`@catalyst.qjit` + `lightning.qubit`) — real execution
+- ✓ Supports standard gates and mid-circuit measurements with `@catalyst.cond`
+- ✓ Physics-correct mock fallback if unavailable
 
 ### Level 4: Statistical Comparison
 - ✓ Total Variation Distance (TVD)
@@ -456,11 +653,24 @@ python scripts/initialize_db.py
 python -c "from src.rag.knowledge_base import KnowledgeBase; kb = KnowledgeBase(); print(kb.count())"
 ```
 
-### HuggingFace Token Required
+### HuggingFace Token Required (for `gpt-oss-20b`)
 ```bash
-# Get token from: https://huggingface.co/settings/tokens
-# Add to .env file:
-echo "HUGGINGFACE_TOKEN=your_token_here" >> .env
+# Get a free token at: https://huggingface.co/settings/tokens
+# Set for the current shell session:
+export HF_TOKEN=hf_...
+
+# Or add permanently to your shell profile:
+echo 'export HF_TOKEN=hf_...' >> ~/.bashrc
+
+# Verify it's set (CLI will show ✅ / ⚠️ status when --list-models):
+python translate.py --list-models
+```
+
+### Unrecognised MLIR dialect
+```bash
+# Error: "unrecognized MLIR dialect — use --model <key> to enable the agentic pipeline"
+# Solution: add --model to let the agent research and translate the dialect
+python translate.py unknown_dialect.mlir --model llama3.1-8b
 ```
 
 ---
@@ -514,11 +724,12 @@ MIT License - see LICENSE file for details.
 
 ## 📊 Project Stats
 
-- **Total Code**: 3,766 lines
-- **Modules**: 30+ Python modules
+- **Total Code**: 3,900+ lines
+- **Modules**: 34+ Python modules
 - **Dialects Supported**: 2 (Catalyst, Quake)
-- **Verification Methods**: 4 levels
-- **Test Coverage**: Comprehensive (Phase 1-7)
+- **Verification Methods**: 4 levels (real execution for Levels 2 & 3)
+- **QIR Simulator**: `qirrunner 0.9.1` (qir-alliance)
+- **MLIR Simulator**: `pennylane-catalyst 0.14.0`
 - **Documentation**: Complete with examples
 
 ---

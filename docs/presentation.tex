@@ -1,6 +1,7 @@
 %% ============================================================
-%%  LLM-Powered Multi-Agent MLIR to QIR Translator
+%%  MLIR to QIR Quantum Circuit Translator
 %%  Beamer Presentation  --  compile with: pdflatex (x2)
+%%  Beginner-friendly: explains MLIR, QIR, quantum basics
 %% ============================================================
 \documentclass[aspectratio=169,10pt]{beamer}
 
@@ -39,6 +40,7 @@
 \definecolor{condred}{RGB}{190,40,40}
 \definecolor{agentpurple}{RGB}{120,50,170}
 \definecolor{ragcyan}{RGB}{0,140,170}
+\definecolor{quakegold}{RGB}{180,140,0}
 \definecolor{codebg}{RGB}{38,42,50}
 \definecolor{codegreen}{RGB}{80,200,120}
 \definecolor{codeyellow}{RGB}{220,190,70}
@@ -57,9 +59,18 @@
   showstringspaces=false,
   frame=single,
   rulecolor=\color{mlirblue},
-  framesep=3pt,
-  xleftmargin=4pt,
-  xrightmargin=2pt,
+  framesep=3pt,xleftmargin=4pt,xrightmargin=2pt,
+}
+\lstdefinestyle{quakestyle}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\fontsize{6.2}{7.8}\selectfont\color{white},
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codeyellow},
+  breaklines=true,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{quakegold},
+  framesep=3pt,xleftmargin=4pt,xrightmargin=2pt,
 }
 \lstdefinestyle{qirstyle}{
   backgroundcolor=\color{codebg},
@@ -69,9 +80,7 @@
   showstringspaces=false,
   frame=single,
   rulecolor=\color{qirgreen},
-  framesep=3pt,
-  xleftmargin=4pt,
-  xrightmargin=2pt,
+  framesep=3pt,xleftmargin=4pt,xrightmargin=2pt,
 }
 \lstdefinestyle{pystyle}{
   backgroundcolor=\color{codebg},
@@ -83,9 +92,18 @@
   showstringspaces=false,
   frame=single,
   rulecolor=\color{agentpurple},
-  framesep=3pt,
-  xleftmargin=4pt,
-  xrightmargin=2pt,
+  framesep=3pt,xleftmargin=4pt,xrightmargin=2pt,
+}
+\lstdefinestyle{jsonlstyle}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\fontsize{6.2}{7.8}\selectfont\color{white},
+  commentstyle=\color{codegreen}\itshape,
+  stringstyle=\color{codeyellow},
+  breaklines=true,
+  showstringspaces=false,
+  frame=single,
+  rulecolor=\color{ragcyan},
+  framesep=3pt,xleftmargin=4pt,xrightmargin=2pt,
 }
 
 %% ── Macros ──────────────────────────────────────────────────
@@ -95,16 +113,14 @@
 \newcommand{\hlr}[1]{\textcolor{condred}{\textbf{#1}}}
 \newcommand{\hlp}[1]{\textcolor{agentpurple}{\textbf{#1}}}
 \newcommand{\hlc}[1]{\textcolor{ragcyan}{\textbf{#1}}}
-
-% Coloured pill badge (no tikz to avoid beamer issues)
+\newcommand{\hlq}[1]{\textcolor{quakegold}{\textbf{#1}}}
 \newcommand{\badge}[2]{%
-  \colorbox{#1}{\color{white}\tiny\bfseries~#2~}}
+  \colorbox{#1}{\color{white}\tiny\bfseries\,#2\,}}
 
 %% ── Metadata ─────────────────────────────────────────────────
 \title[MLIR $\to$ QIR Translator]{%
-  LLM-Powered Multi-Agent MLIR to QIR\\
-  Quantum Circuit Translator}
-\subtitle{Architecture, Implementation \& Translation Semantics}
+  MLIR $\to$ QIR Quantum Circuit Translator}
+\subtitle{How it works --- explained from first principles}
 \author{Agentic ML/QC Research}
 \date{2026}
 \institute{PennyLane Catalyst \(\cdot\) CUDA Quantum \(\cdot\) QIR Alliance}
@@ -118,7 +134,9 @@
   \begin{tikzpicture}[remember picture,overlay]
     \node[anchor=south east,inner sep=8pt] at (current page.south east){%
       \scriptsize\color{gray}
-      33 modules \(\cdot\) 3\,700+ lines \(\cdot\) 7 phases \(\cdot\) 2 dialects};
+      2 dialects \(\cdot\) 4-level verification \(\cdot\)
+      real quantum simulation \(\cdot\) web UI \(\cdot\) CLI \(\cdot\)
+      Ollama + HuggingFace LLM};
   \end{tikzpicture}
 \end{frame}
 
@@ -127,94 +145,223 @@
 \end{frame}
 
 %% ============================================================
-\section{Motivation \& Problem Statement}
+\section{Background: Quantum Circuits, MLIR, and QIR}
 %% ============================================================
 
-\begin{frame}{The Quantum IR Landscape}
+\begin{frame}{What is a Quantum Circuit?}
   \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Multiple frameworks produce different IRs}
-      \vspace{4pt}
-      \begin{block}{Source IRs (MLIR-based)}
-        \begin{itemize}
-          \item \hl{PennyLane Catalyst:} \texttt{quantum.*} dialect
-          \item \hl{CUDA Quantum (Quake):} \texttt{quake.*} dialect
-        \end{itemize}
+    \column{0.52\textwidth}
+      A \textbf{quantum circuit} is a program for a quantum computer, made of:
+      \vspace{6pt}
+      \begin{itemize}\small
+        \item \hl{Qubit} --- quantum bit; can be 0, 1, or a superposition
+        \item \hl{Gate} --- operation that transforms a qubit (like a logic gate)
+        \item \hl{Measurement} --- reads the qubit, collapsing it to 0 or 1
+      \end{itemize}
+      \vspace{6pt}
+      \begin{exampleblock}{Bell State --- 2 qubits in perfect correlation}
+        \scriptsize
+        \texttt{q0: ----H----$\bullet$----M}\\
+        \texttt{\phantom{q0: }         |}\\
+        \texttt{q1: ---------X----M}\\[2pt]
+        H = Hadamard (superposition), $\bullet$--X = CNOT (entanglement)\\
+        Result: always \texttt{00} or \texttt{11}, never \texttt{01} or \texttt{10}
+      \end{exampleblock}
+    \column{0.44\textwidth}
+      \begin{center}
+      \begin{tikzpicture}[
+        lbl/.style={font=\scriptsize,text=white},
+        gate/.style={draw=mlirblue,fill=mlirblue!30,minimum width=0.5cm,
+                     minimum height=0.5cm,rounded corners=2pt,font=\scriptsize\bfseries},
+        meas/.style={draw=qirgreen,fill=qirgreen!20,minimum width=0.5cm,
+                     minimum height=0.5cm,rounded corners=2pt,font=\tiny},
+        wire/.style={thick,white},
+        scale=0.85,
+      ]
+        \draw[wire](0,0)--(5.8,0);
+        \draw[wire](0,-1)--(5.8,-1);
+        \node[lbl] at (-0.2,0) {q0};
+        \node[lbl] at (-0.2,-1){q1};
+        \node[gate] at (1.0,0) {H};
+        \draw[wire,mlirblue](1.8,0)--(1.8,-1);
+        \fill[mlirblue](1.8,0) circle(3pt);
+        \node[gate,draw=ssaorange,fill=ssaorange!30] at (1.8,-1){X};
+        \node[meas] at (3.2,0){M};
+        \node[meas] at (3.2,-1){M};
+        \node[lbl] at (4.5,0.35){\tiny always 00 or 11};
+      \end{tikzpicture}
+      \end{center}
+      \vspace{6pt}
+      \begin{block}{\small Classical analogy}
+        \scriptsize
+        \begin{tabular}{@{}ll@{}}
+          Qubit     & Bit (0 or 1) \\
+          Gate      & Logic gate (AND, OR\ldots) \\
+          Measure   & Read a register \\
+        \end{tabular}
       \end{block}
-      \begin{block}{Target IR}
-        \begin{itemize}
-          \item \hlg{QIR Alliance:} LLVM IR-based
-        \end{itemize}
-      \end{block}
-    \column{0.48\textwidth}
-      \textbf{Translation Challenges}
-      \begin{alertblock}{Non-trivial semantics}
-        \begin{enumerate}\small
-          \item \hlo{SSA variable chains} -- qubit indices buried in
-                multi-result operations
-          \item \hlo{Parametric gates} -- angles as SSA constants,
-                not literal values
-          \item \hlo{Conditional branching} -- \texttt{scf.if} linked
-                to measurements through 5 IR operations
-          \item \hlo{Operation ordering} -- gates and measurements
-                must be interleaved, not grouped
-        \end{enumerate}
-      \end{alertblock}
   \end{columns}
 \end{frame}
 
-\begin{frame}{Why Naive Regex Fails: The SSA Problem}
+\begin{frame}[fragile]{What is MLIR?}
   \begin{columns}[T]
     \column{0.50\textwidth}
-      \textbf{GHZ-5 CNOT chain in Catalyst MLIR}
-      \vspace{4pt}
-      \begin{block}{Naive approach (wrong)}
-        Extract trailing digit from variable name:\\
-        \texttt{\%out\_qubits\_\textbf{1}\#0} $\Rightarrow$ qubit 1\\[4pt]
-        \hlr{Result:} CNOT(0,1), CNOT(1,2), CNOT(1,3)\\
-        \hlr{Wrong:} control qubit keeps changing
+      \textbf{MLIR} = \textit{Multi-Level Intermediate Representation}\\[4pt]
+      It is the internal language that quantum compilers use to describe
+      circuits \textit{before} lowering to hardware.
+      Think of it as the compiler's \textbf{source code} that humans can read.
+      \vspace{6pt}
+      \begin{block}{Two quantum dialects}
+        \begin{itemize}\small
+          \item \hl{Catalyst dialect} --- used by PennyLane\\
+                operations: \texttt{quantum.custom}, \texttt{quantum.alloc}
+          \item \hlq{Quake dialect} --- used by CUDA Quantum\\
+                operations: \texttt{quake.h}, \texttt{quake.alloca}
+        \end{itemize}
       \end{block}
-      \begin{exampleblock}{SSA-aware approach (correct)}
-        Trace \texttt{\%out\_qubits\_1\#0} back:\\
-        CNOT output\#0 $\leftarrow$ CNOT input\#0\\
-        $\leftarrow$ \texttt{\%out\_qubits\_0\#0}\\
-        $\leftarrow$ CNOT input\#0\\
-        $\leftarrow$ \texttt{\%out\_qubits}\\
-        $\leftarrow$ \texttt{extract[0]} $=$ qubit \textbf{0}\\[2pt]
-        \hlg{Result:} CNOT(0,1), CNOT(0,2), CNOT(0,3)
+      \vspace{4pt}
+      Both describe the \textbf{same Bell state} circuit\\
+      but with completely different syntax.
+    \column{0.46\textwidth}
+      \textbf{Catalyst MLIR (PennyLane):}
+      \begin{lstlisting}[style=mlirstyle]
+%0 = quantum.alloc( 2) : !quantum.reg
+%1 = quantum.extract %0[ 0]
+%out = quantum.custom
+  "Hadamard"() %1 : !quantum.bit
+%2 = quantum.extract %0[ 1]
+%out_0:2 = quantum.custom
+  "CNOT"() %out, %2
+      \end{lstlisting}
+      \vspace{4pt}
+      \textbf{Quake MLIR (CUDA Quantum):}
+      \begin{lstlisting}[style=quakestyle]
+%0 = quake.alloca !quake.veq<2>
+%c0 = arith.constant 0 : i64
+%1 = quake.extract_ref %0[%c0]
+quake.h %1 : (!quake.ref) -> ()
+quake.x [%1] %3 :
+  (!quake.ref, !quake.ref) -> ()
+      \end{lstlisting}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{What is QIR?}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      \textbf{QIR} = \textit{Quantum Intermediate Representation}\\[4pt]
+      A standard defined by the \textbf{QIR Alliance}
+      (Microsoft, NVIDIA, AWS, \ldots).
+      It is \textbf{LLVM IR} --- the same format used by C/C++ compilers
+      --- extended with quantum operations.
+      \vspace{6pt}
+      \begin{exampleblock}{Why QIR matters}
+        \small
+        Hardware and simulators that speak QIR can run
+        circuits from \textbf{any} framework ---
+        PennyLane, CUDA Quantum, Qiskit, etc.
+        It is the \textbf{universal adapter}.
       \end{exampleblock}
+      \vspace{4pt}
+      \begin{block}{QIR naming convention}
+        \small
+        \texttt{@\_\_quantum\_\_qis\_\_h\_\_body} = Hadamard\\
+        \texttt{@\_\_quantum\_\_qis\_\_cnot\_\_body} = CNOT\\
+        \texttt{@\_\_quantum\_\_qis\_\_mz\_\_body} = Measure
+      \end{block}
+    \column{0.46\textwidth}
+      \textbf{Bell State in QIR (.ll):}
+      \begin{lstlisting}[style=qirstyle]
+define void @main() #0 {
+entry:
+  call void
+    @__quantum__rt__initialize(i8* null)
+  ; H on qubit 0
+  call void
+    @__quantum__qis__h__body(
+      %Qubit* null)
+  ; CNOT(0, 1)
+  call void
+    @__quantum__qis__cnot__body(
+      %Qubit* null,
+      %Qubit* inttoptr(i64 1 to %Qubit*))
+  ; Measure qubit 0
+  call void
+    @__quantum__qis__mz__body(
+      %Qubit* null, %Result* null)
+  ret void
+}
+      \end{lstlisting}
+  \end{columns}
+\end{frame}
+
+%% ============================================================
+\section{Motivation \& The Problem}
+%% ============================================================
+
+\begin{frame}[t]{The Format Zoo}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      \textbf{Every framework uses its own IR:}
+      \vspace{4pt}
+      \begin{tabular}{@{}lll@{}}
+        \toprule
+        Framework & Format & Dialect \\
+        \midrule
+        PennyLane Catalyst & MLIR & \texttt{quantum.*} \\
+        CUDA Quantum & MLIR & \texttt{quake.*} \\
+        Qiskit & OpenQASM 3 & text \\
+        Hardware / sims & \hlg{QIR} & LLVM IR \\
+        \bottomrule
+      \end{tabular}
+      \vspace{8pt}
+      \begin{alertblock}{The Pain}
+        \scriptsize
+        Translating MLIR to QIR requires handling:
+        \begin{itemize}
+          \item \hlo{SSA variable chains}: qubit indices buried in multi-result ops
+          \item \hlo{Parametric gates}: angles stored as SSA constants, not literals
+          \item \hlo{Conditionals}: \texttt{scf.if} linked to measurements (5 IR ops)
+        \end{itemize}
+      \end{alertblock}
     \column{0.46\textwidth}
       \begin{center}
       \begin{tikzpicture}[
-        box/.style={draw,rounded corners=3pt,minimum width=3.5cm,
-                    minimum height=0.45cm,font=\scriptsize,
-                    text centered,inner sep=2pt,fill=codebg,
-                    text=white},
-        arr/.style={-Stealth,thick,mlirblue},
+        fw/.style={draw,rounded corners=4pt,minimum width=2.5cm,
+                   minimum height=0.55cm,font=\scriptsize\bfseries,
+                   align=center,text centered},
+        arr/.style={-Stealth,thick},
         scale=0.9,
       ]
-        \node[box](e0){\texttt{extract[\,0\,]} $\to$ qubit 0};
-        \node[box,below=0.3cm of e0](h){\texttt{Hadamard} out $\to$ qubit 0};
-        \node[box,below=0.3cm of h](c1){%
-          \texttt{CNOT\#0} $\to$ 0, \texttt{\#1} $\to$ 1};
-        \node[box,below=0.3cm of c1](c2){%
-          \texttt{CNOT\#0} $\to$ 0, \texttt{\#1} $\to$ 2};
-        \node[box,below=0.3cm of c2](c3){%
-          \texttt{CNOT\#0} $\to$ 0, \texttt{\#1} $\to$ 3};
-        \node[box,below=0.3cm of c3](c4){%
-          \texttt{CNOT\#0} $\to$ 0, \texttt{\#1} $\to$ 4};
-        \draw[arr](e0)--(h);
-        \draw[arr](h)--(c1);
-        \draw[arr](c1)--(c2)node[midway,right,
-          font=\tiny,text=ssaorange]{\#0};
-        \draw[arr](c2)--(c3)node[midway,right,
-          font=\tiny,text=ssaorange]{\#0};
-        \draw[arr](c3)--(c4)node[midway,right,
-          font=\tiny,text=ssaorange]{\#0};
+        \node[fw,fill=mlirblue!20,draw=mlirblue](cat)
+          {PennyLane\\Catalyst MLIR};
+        \node[fw,fill=quakegold!20,draw=quakegold,below=0.5cm of cat](quake)
+          {CUDA Quantum\\Quake MLIR};
+        \node[fw,fill=qirgreen!20,draw=qirgreen,
+              right=1.8cm of cat,yshift=-0.6cm](qir)
+          {QIR\\(.ll)};
+        \node[fw,fill=gray!20,draw=gray,right=1.8cm of qir](hw)
+          {Hardware /\\Simulators};
+        \draw[arr,mlirblue](cat)--(qir)
+          node[midway,above,font=\tiny,text=mlirblue]{translate};
+        \draw[arr,quakegold](quake)--(qir)
+          node[midway,below,font=\tiny,text=quakegold]{translate};
+        \draw[arr,qirgreen](qir)--(hw);
+        \node[draw=ssaorange,dashed,rounded corners,
+              fit=(cat)(quake),inner sep=4pt] {};
+        \node[above,font=\tiny,text=ssaorange] at (cat.north)
+          {Source IRs (MLIR)};
+        \node[below,font=\tiny,text=qirgreen] at (qir.south)
+          {Universal target};
       \end{tikzpicture}
       \end{center}
-      \vspace{2pt}
-      \centering\small Each \texttt{\#0} carries qubit 0 forward
+      \vspace{8pt}
+      \begin{exampleblock}{\small This Tool}
+        \scriptsize
+        Automatic, verified translation from both MLIR
+        dialects to standard QIR --- with real simulator
+        confirmation.
+      \end{exampleblock}
   \end{columns}
 \end{frame}
 
@@ -222,147 +369,94 @@
 \section{System Architecture}
 %% ============================================================
 
-\begin{frame}{Seven-Phase Architecture Overview}
+\begin{frame}{Full Pipeline Overview}
   \begin{center}
   \begin{tikzpicture}[
-    box/.style={draw,rounded corners=4pt,minimum width=2.4cm,
-                minimum height=0.65cm,font=\scriptsize\bfseries,
-                text centered,inner sep=3pt,fill=mlirblue!20,
-                draw=mlirblue},
-    arr/.style={-Stealth,thick,mlirblue},
-  ]
-    \node[box,align=center](p1){Phase 1\newline Config \& Infra};
-    \node[box,align=center,right=0.4cm of p1](p2){Phase 2\newline Dialect \& Parse};
-    \node[box,align=center,right=0.4cm of p2](p3){Phase 3\newline QIR Generation};
-    \node[box,align=center,right=0.4cm of p3](p4){Phase 4\newline RAG Knowledge};
-    \node[box,align=center,below=0.7cm of p4](p5){Phase 5\newline Multi-Agent};
-    \node[box,align=center,left=0.4cm of p5](p6){Phase 6\newline Verification};
-    \node[box,align=center,left=0.4cm of p6](p7){Phase 7\newline Web UI};
-    \draw[arr](p1)--(p2); \draw[arr](p2)--(p3);
-    \draw[arr](p3)--(p4); \draw[arr](p4)--(p5);
-    \draw[arr](p5)--(p6); \draw[arr](p6)--(p7);
-    \node[above=0.08cm of p1,font=\tiny\color{gray}]{Settings/LLM};
-    \node[above=0.08cm of p2,font=\tiny\color{gray}]{SSA Parser};
-    \node[above=0.08cm of p3,font=\tiny\color{gray}]{Templates};
-    \node[above=0.08cm of p4,font=\tiny\color{gray}]{ChromaDB};
-    \node[below=0.08cm of p5,font=\tiny\color{gray}]{CrewAI};
-    \node[below=0.08cm of p6,font=\tiny\color{gray}]{4-Level};
-    \node[below=0.08cm of p7,font=\tiny\color{gray}]{Streamlit};
-    \draw[dashed,gray,rounded corners=5pt]
-      ([xshift=-4pt,yshift=7pt]p1.north west) rectangle
-      ([xshift=4pt,yshift=-7pt]p3.south east);
-    \node[above=0.6cm of p2,font=\tiny\color{gray}]{Core Engine};
-    \draw[dashed,gray,rounded corners=5pt]
-      ([xshift=-4pt,yshift=7pt]p4.north west) rectangle
-      ([xshift=4pt,yshift=-7pt]p5.south east);
-  \end{tikzpicture}
-  \end{center}
-  \vspace{8pt}
-  \begin{columns}[T]
-    \column{0.32\textwidth}
-      \leavevmode\textbf{Core (Phases 1--3)}
-
-      \smallskip Deterministic, rule-based translation engine
-    \column{0.32\textwidth}
-      \leavevmode\textbf{AI Layer (Phases 4--5)}
-
-      \smallskip RAG-enhanced LLM agents with iterative refinement
-    \column{0.32\textwidth}
-      \leavevmode\textbf{QA Layer (Phases 6--7)}
-
-      \smallskip 4-level verification and Streamlit web interface
-  \end{columns}
-\end{frame}
-
-\begin{frame}{End-to-End Data Flow}
-  \begin{center}
-  \begin{tikzpicture}[
-    node distance=0.4cm and 0.55cm,
-    box/.style={draw,rounded corners=3pt,minimum width=2.0cm,
-                minimum height=0.5cm,font=\scriptsize,
+    node distance=0.35cm and 0.5cm,
+    box/.style={draw,rounded corners=3pt,minimum width=2.1cm,
+                minimum height=0.55cm,font=\scriptsize\bfseries,
                 text centered,inner sep=2pt},
     arr/.style={-Stealth,thick},
-    ds/.style={box,fill=mlirblue!15,draw=mlirblue},
-    ps/.style={box,fill=qirgreen!15,draw=qirgreen},
-    as/.style={box,fill=agentpurple!15,draw=agentpurple},
-    vs/.style={box,fill=ssaorange!15,draw=ssaorange},
+    inp/.style={box,fill=mlirblue!15,draw=mlirblue},
+    core/.style={box,fill=qirgreen!15,draw=qirgreen},
+    ai/.style={box,fill=agentpurple!15,draw=agentpurple},
+    vr/.style={box,fill=ssaorange!15,draw=ssaorange},
+    outnode/.style={box,fill=qirgreen!30,draw=qirgreen!80},
   ]
-    \node[ds](mlir){MLIR Code};
-    \node[ds,right=of mlir,align=center](detect){Dialect\\Detection};
-    \node[ds,right=of detect,align=center](parse){SSA-Aware\\Parser};
-    \node[ds,right=of parse,align=center](circuit){MLIRCircuit\\(ordered\_ops)};
-    \node[ps,right=of circuit,align=center](gen){QIR\\Generator};
-    \node[ps,right=of gen,align=center](qir){QIR Code\\(.ll)};
-    \node[as,below=0.8cm of parse,align=center](rag){RAG\\Knowledge};
-    \node[as,below=0.8cm of circuit,align=center](agent){Translation\\Agent};
-    \node[vs,below=0.8cm of gen,align=center](verify){Verification\\Engine};
-    \draw[arr,mlirblue](mlir)--(detect);
-    \draw[arr,mlirblue](detect)--(parse);
-    \draw[arr,mlirblue](parse)--(circuit);
-    \draw[arr,qirgreen](circuit)--(gen);
-    \draw[arr,qirgreen](gen)--(qir);
+    % Input column
+    \node[inp,align=center](cat){Catalyst\\MLIR};
+    \node[inp,align=center,below=0.3cm of cat](quake){Quake\\MLIR};
+    \node[inp,align=center,below=0.3cm of quake](qasm){OpenQASM3\\(via cudaq)};
+
+    % Core pipeline
+    \node[core,align=center,right=1.0cm of cat,yshift=-0.5cm](detect)
+      {Dialect\\Detection};
+    \node[core,align=center,right=0.5cm of detect](parse)
+      {SSA-Aware\\Parser};
+    \node[core,align=center,right=0.5cm of parse](ir)
+      {MLIRCircuit\\(ordered\_ops)};
+    \node[core,align=center,right=0.5cm of ir](gen)
+      {QIR\\Generator};
+
+    % Output
+    \node[outnode,align=center,right=0.5cm of gen](qirout)
+      {QIR Output\\(.ll)};
+
+    % AI + Verification
+    \node[ai,align=center,below=0.9cm of parse](rag){RAG\\Knowledge};
+    \node[ai,align=center,below=0.9cm of ir](agent){LLM\\Agent};
+    \node[vr,align=center,below=0.9cm of gen](verify){Verification\\Engine};
+
+    % Arrows: inputs
+    \draw[arr,mlirblue](cat.east)--(detect.north west);
+    \draw[arr,quakegold](quake.east)--(detect.west);
+    \draw[arr,gray](qasm.east)--(detect.south west);
+
+    % Core pipeline
+    \draw[arr,qirgreen](detect)--(parse);
+    \draw[arr,qirgreen](parse)--(ir);
+    \draw[arr,qirgreen](ir)--(gen);
+    \draw[arr,qirgreen](gen)--(qirout);
+
+    % AI paths
     \draw[arr,agentpurple,dashed](rag)--(agent);
-    \draw[arr,agentpurple,dashed](agent)--
-      node[right,font=\tiny]{Alt}(circuit);
-    \draw[arr,ssaorange,dashed](qir)--(verify);
-    \draw[arr,ssaorange,dashed](verify)--
-      node[below,font=\tiny]{feedback}
-      ([yshift=-0.2cm]agent.south);
-    \node[below=0.05cm of mlir,font=\tiny\color{gray}]{Catalyst/Quake};
-    \node[below=0.05cm of qir,font=\tiny\color{gray}]{LLVM IR};
+    \draw[arr,agentpurple,dashed](agent.north)--(ir.south);
+
+    % Verification
+    \draw[arr,ssaorange,dashed](qirout.south)--(verify.east);
+    \draw[arr,ssaorange,dashed](verify.west)--
+      node[below,font=\tiny]{feedback}(agent.east);
   \end{tikzpicture}
   \end{center}
-  \vspace{6pt}
+  \vspace{2pt}
   \begin{columns}[T]
     \column{0.32\textwidth}
-      \leavevmode\badge{mlirblue}{Direct path}
-
-      \smallskip
-      Deterministic SSA-aware parsing and template-based generation. No LLM required.
+      \badge{qirgreen}{Direct path}
+      \smallskip\\
+      {\small Deterministic SSA-aware parsing.
+      No LLM needed for clean MLIR.}
     \column{0.32\textwidth}
-      \leavevmode\badge{agentpurple}{Agent path}
-
-      \smallskip
-      RAG retrieves context; LLM generates QIR; VerificationAgent validates.
+      \badge{agentpurple}{AI agent path}
+      \smallskip\\
+      {\small RAG retrieves docs; LLM generates QIR;
+      up to 3 refinement iterations.}
     \column{0.32\textwidth}
-      \leavevmode\badge{ssaorange}{Refinement}
-
-      \smallskip
-      Up to 3 iterations with gate-count and simulation feedback.
+      \badge{ssaorange}{Verification}
+      \smallskip\\
+      {\small Gate count + real simulation (TVD $\ge$ 95\%).}
   \end{columns}
 \end{frame}
 
 %% ============================================================
-\section{Phase 2: Dialect System \& SSA-Aware Parsing}
+\section{Phase 2: Dialect Detection \& SSA-Aware Parsing}
 %% ============================================================
 
-\begin{frame}[fragile]{Plugin Architecture: Dialect System}
+\begin{frame}[fragile]{Step 1: Dialect Detection}
   \begin{columns}[T]
     \column{0.50\textwidth}
-      \textbf{Abstract Plugin Interface}
-      \begin{lstlisting}[style=pystyle]
-class BaseDialect(ABC):
-    @property
-    @abstractmethod
-    def name(self) -> str: ...
-
-    @abstractmethod
-    def can_parse(self, mlir_code: str) -> bool:
-        """True if this dialect matches."""
-
-    @abstractmethod
-    def parse_circuit(self, mlir_code) -> MLIRCircuit:
-        """Full SSA-aware parse."""
-
-    @abstractmethod
-    def get_gate_mapping(self) -> Dict[str, str]:
-        """Gate name -> QIR function name."""
-
-    def validate_circuit(self, circuit):
-        """Check qubit indices are in range."""
-      \end{lstlisting}
-    \column{0.46\textwidth}
-      \textbf{Auto-Detection}
+      The tool \textbf{automatically} recognises which MLIR format was given.
+      No configuration needed.
+      \vspace{6pt}
       \begin{lstlisting}[style=pystyle]
 class DialectDetector:
     def detect(self, mlir_code: str):
@@ -371,750 +465,464 @@ class DialectDetector:
                 return dialect
         raise UnsupportedDialectError()
       \end{lstlisting}
-      \vspace{6pt}
-      \textbf{Detection markers}
+      \vspace{4pt}
+      Each dialect implements \texttt{can\_parse()}:
+      \begin{lstlisting}[style=pystyle]
+class CatalystDialect(BaseDialect):
+    def can_parse(self, code):
+        return "quantum.custom" in code
 
-      \smallskip
-      \begin{tabular}{@{}ll@{}}
+class QuakeDialect(BaseDialect):
+    def can_parse(self, code):
+        return ("quake.alloca" in code
+             or "!quake.veq" in code)
+      \end{lstlisting}
+      \vspace{4pt}
+      \faPlus~New dialects: just subclass \texttt{BaseDialect}
+    \column{0.46\textwidth}
+      \textbf{Detection markers}
+      \vspace{4pt}
+      \begin{tabular}{@{}lp{3.2cm}@{}}
         \toprule
         Dialect & Key markers \\
         \midrule
-        \hl{Catalyst} & \texttt{quantum.custom} \\
-                      & \texttt{quantum.alloc} \\
-                      & \texttt{!quantum.bit} \\
-        \hlg{Quake}   & \texttt{quake.alloca} \\
-                      & \texttt{quake.h / quake.mz} \\
+        \hl{Catalyst} & \texttt{quantum.custom}\\
+                      & \texttt{quantum.alloc}\\
+                      & \texttt{!quantum.bit}\\[4pt]
+        \hlq{Quake}   & \texttt{quake.alloca}\\
+                      & \texttt{quake.h}\\
+                      & \texttt{!quake.veq}\\
         \bottomrule
       \end{tabular}
-
-      \vspace{6pt}
-      \faPlus~Extensible: subclass \texttt{BaseDialect}
+      \vspace{8pt}
+      \begin{block}{Intermediate Representation}
+        Both dialects produce the same
+        \texttt{MLIRCircuit} object,\\
+        so the QIR generator works
+        unchanged for both.
+      \end{block}
   \end{columns}
 \end{frame}
 
-\begin{frame}[fragile]{Core Data Models}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \begin{lstlisting}[style=pystyle]
-@dataclass
-class GateOperation:
-    name: str           # e.g. "Hadamard","RX"
-    qubits: List[int]   # physical qubit indices
-    params: List[float] # rotation angles
-
-@dataclass
-class MeasurementOperation:
-    qubit: int
-    result_var: str     # SSA variable name
-
-@dataclass
-class ConditionalBlock:
-    condition_measurement_idx: int
-    then_gates: List[GateOperation]
-    else_gates: List[GateOperation]
-      \end{lstlisting}
-    \column{0.48\textwidth}
-      \begin{lstlisting}[style=pystyle]
-@dataclass
-class MLIRCircuit:
-    dialect_name: str
-    num_qubits: int
-    gates: List[GateOperation]
-    measurements: List[MeasurementOperation]
-    qubit_allocation: QubitAllocation
-    has_conditionals: bool
-    metadata: Dict
-    conditionals: List[ConditionalBlock]
-    # KEY: operations in source order
-    ordered_ops: List[Tuple]
-    # Each entry is one of:
-    # ("gate",        GateOperation)
-    # ("measurement", MeasurementOperation)
-    # ("conditional", ConditionalBlock)
-      \end{lstlisting}
-  \end{columns}
-  \vspace{4pt}
-  \begin{exampleblock}{Why \texttt{ordered\_ops}?}
-    MLIR interleaves gates, measurements, and conditionals.
-    A flat ordered list is the only way to produce semantically
-    correct QIR that respects the original operation sequence.
-  \end{exampleblock}
-\end{frame}
-
-\begin{frame}[fragile]{SSA-Aware Single-Pass Parser}
+\begin{frame}{Step 2: Why Parsing is Hard --- The SSA Problem}
   \begin{columns}[T]
     \column{0.50\textwidth}
-      \textbf{Three SSA tracking dictionaries}
-      \begin{lstlisting}[style=pystyle]
-# SSA variable -> physical qubit index
-ssa_qubit: Dict[str, int] = {}
-
-# SSA variable -> float constant (angles)
-ssa_constants: Dict[str, float] = {}
-
-# SSA variable -> measurement result index
-ssa_meas_source: Dict[str, int] = {}
-      \end{lstlisting}
-
+      MLIR uses \textbf{SSA form} (Static Single Assignment):
+      every value is assigned exactly once and gets a name
+      like \texttt{\%out}, \texttt{\%1}, \texttt{\%cst}.
+      \vspace{6pt}
+      \textbf{Problem:} qubit indices are \textit{buried} inside
+      chains of variable references.
+      \vspace{6pt}
+      \begin{block}{Naive approach --- fails!}
+        Extract digit from variable name:\\
+        \texttt{\%out\_qubits\_\textbf{1}\#0} $\Rightarrow$ qubit 1
+        \vspace{2pt}\\
+        \hlr{GHZ-5 result:} CNOT(0,1), CNOT(1,2), CNOT(1,3)\\
+        \hlr{WRONG} --- control qubit keeps changing
+      \end{block}
+      \begin{exampleblock}{SSA-aware approach --- correct!}
+        Trace \texttt{\%out\_qubits\_1\#0} back:\\
+        CNOT\#0 $\leftarrow$ CNOT input\#0 $\leftarrow$\\
+        \texttt{\%out\_qubits\_0\#0} $\leftarrow$ extract[0] =
+        qubit \textbf{0}~\checkmark\\
+        \hlg{Result:} CNOT(0,1), CNOT(0,2), CNOT(0,3)
+      \end{exampleblock}
+    \column{0.46\textwidth}
+      \textbf{SSA tracking dictionaries:}
       \vspace{4pt}
-      \textbf{Handled MLIR operations}
-
-      \smallskip
-      \begin{tabular}{@{}lp{3.4cm}@{}}
+      \begin{tabular}{@{}lp{3.5cm}@{}}
         \toprule
-        MLIR Operation & Action \\
+        Dictionary & Stores \\
         \midrule
-        \texttt{arith.constant} & Store float in \texttt{ssa\_constants}\\
-        \texttt{quantum.extract} & Map var to qubit index\\
-        \texttt{quantum.custom 1q} & Resolve qubit, update map\\
-        \texttt{quantum.custom 2q} & Resolve both, update \#0/\#1\\
-        \texttt{quantum.measure} & Record in \texttt{ssa\_meas\_source}\\
-        \texttt{tensor / stablehlo} & Propagate meas index\\
-        \texttt{scf.if} & Build \texttt{ConditionalBlock}\\
+        \texttt{ssa\_qubit} & \texttt{\%var} $\to$ qubit index \\
+        \texttt{ssa\_constants} & \texttt{\%var} $\to$ float angle \\
+        \texttt{ssa\_meas} & \texttt{\%var} $\to$ meas index \\
         \bottomrule
       \end{tabular}
-    \column{0.46\textwidth}
-      \textbf{Multi-result gate handling (CNOT)}
-      \begin{lstlisting}[style=mlirstyle]
-# 2-result gate in MLIR:
-%out:2 = quantum.custom "CNOT"()
-    %ctrl, %tgt : !quantum.bit, !quantum.bit
-
-# Parser builds:
-qubit_indices = [
-    ssa_qubit["ctrl"],  # resolves to 0
-    ssa_qubit["tgt"],   # resolves to 1
-]
-# Map each output slot:
-ssa_qubit["out#0"] = 0  # control
-ssa_qubit["out#1"] = 1  # target
-      \end{lstlisting}
-
-      \vspace{4pt}
-      \textbf{Parametric gate: angle via SSA constant}
-      \begin{lstlisting}[style=mlirstyle]
-%cst = arith.constant 2.59e+00 : f64
-# -> ssa_constants["cst"] = 2.59
-
-%q2 = quantum.custom "RX"(%cst) %q1
-# _parse_parameters("%cst"):
-#   finds "cst" in ssa_constants
-#   returns [2.59]
-# Emitted as: double 2.590000e+00
-      \end{lstlisting}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Conditional Branching: Tracing \texttt{scf.if}}
-  \begin{columns}[T]
-    \column{0.52\textwidth}
-      \textbf{5-step measurement propagation chain}
-
-      \vspace{4pt}
+      \vspace{8pt}
       \begin{center}
       \begin{tikzpicture}[
-        node distance=0.28cm,
-        box/.style={draw,rounded corners=2pt,minimum width=4.2cm,
-                    minimum height=0.40cm,font=\tiny,text centered,
-                    fill=codebg,text=white,draw=condred},
-        arr/.style={-Stealth,condred,thick},
-        lbl/.style={right,font=\tiny,text=gray},
+        box/.style={draw,rounded corners=2pt,minimum width=3.2cm,
+                    minimum height=0.4cm,font=\scriptsize,
+                    text centered,fill=codebg,text=white},
+        arr/.style={-Stealth,mlirblue,thick},
+        scale=0.88,
       ]
-        \node[box](m1){\texttt{quantum.measure} $\to$ \texttt{\%mres}};
-        \node[box,below=of m1](t1){\texttt{tensor.from\_elements \%mres}};
-        \node[box,below=of t1](c1){\texttt{stablehlo.convert}};
-        \node[box,below=of c1](c2){\texttt{stablehlo.compare EQ}};
-        \node[box,below=of c2](t2){\texttt{tensor.extract}};
-        \node[box,below=of t2,draw=condred,fill=condred!25,text=black]
-          (si){\texttt{scf.if \%extracted}};
-        \draw[arr](m1)--(t1)node[lbl]{\textit{i1}};
-        \draw[arr](t1)--(c1)node[lbl]{\textit{tensor<i1>}};
-        \draw[arr](c1)--(c2)node[lbl]{\textit{tensor<i64>}};
-        \draw[arr](c2)--(t2)node[lbl]{\textit{tensor<i1>}};
-        \draw[arr](t2)--(si)node[lbl]{\textit{i1}};
+        \node[box](e0){\texttt{extract[0]} $\to$ qubit~0};
+        \node[box,below=0.25cm of e0](h){\texttt{H} out $\to$ qubit~0};
+        \node[box,below=0.25cm of h](c1){\texttt{CNOT\#0}$\to$0, \texttt{\#1}$\to$1};
+        \node[box,below=0.25cm of c1](c2){\texttt{CNOT\#0}$\to$0, \texttt{\#1}$\to$2};
+        \node[box,below=0.25cm of c2](c3){\texttt{CNOT\#0}$\to$0, \texttt{\#1}$\to$3};
+        \draw[arr](e0)--(h);
+        \draw[arr](h)--(c1);
+        \draw[arr](c1)--(c2)
+          node[midway,right,font=\tiny,text=ssaorange]{\#0};
+        \draw[arr](c2)--(c3)
+          node[midway,right,font=\tiny,text=ssaorange]{\#0};
       \end{tikzpicture}
       \end{center}
-    \column{0.44\textwidth}
-      \textbf{How the parser tracks it}
-
-      \smallskip
-      The \texttt{ssa\_meas\_source} dictionary propagates the
-      measurement index through each forwarding step:
-
-      \vspace{6pt}
-      \begin{tabular}{@{}ll@{}}
-        \toprule
-        Variable & Meas.\ index \\
-        \midrule
-        \texttt{\%mres} & 1 \\
-        \texttt{\%from\_elements} & 1 \\
-        \texttt{\%convert} & 1 \\
-        \texttt{\%compare} & 1 \\
-        \texttt{\%extracted} & 1 \\
-        \bottomrule
-      \end{tabular}
-
-      \vspace{6pt}
-      When \texttt{scf.if \%extracted} is reached, the parser:
-      \begin{enumerate}\small
-        \item Looks up \texttt{\%extracted} $\Rightarrow$ meas index 1
-        \item Parses the then-block for quantum gates
-        \item Builds \texttt{ConditionalBlock(meas\_idx=1, then\_gates=[PauliZ])}
-      \end{enumerate}
   \end{columns}
 \end{frame}
 
-%% ============================================================
-\section{Phase 3: QIR Code Generation}
-%% ============================================================
-
-\begin{frame}[fragile]{QIR Generator: Ordered Operation Emission}
+\begin{frame}[fragile]{Step 2: Quake Dialect Parsing}
   \begin{columns}[T]
     \column{0.50\textwidth}
-      \begin{lstlisting}[style=pystyle]
-def _generate_entry_function(self, circuit, fn):
-    body = []
-    body.append(
-      "  call void"
-      " @__quantum__rt__initialize(i8* null)")
+      The Quake dialect (CUDA Quantum) uses a different pattern:
+      qubit refs are extracted via integer constants, and gates
+      carry type annotations.
+      \vspace{4pt}
+      \begin{lstlisting}[style=quakestyle]
+; Allocate 5 qubits
+%0 = quake.alloca !quake.veq<5>
+; Integer constant for index
+%c0 = arith.constant 0 : i64
+; Extract qubit-0 reference
+%1 = quake.extract_ref %0[%c0]
+    : (!quake.veq<5>, i64) -> !quake.ref
+; Hadamard on qubit 0
+quake.h %1 : (!quake.ref) -> ()
+; CNOT: [ctrl] tgt notation
+quake.x [%1] %3 :
+    (!quake.ref, !quake.ref) -> ()
+; Parametric gate
+quake.rx (%cst) %1 :
+    (f64, !quake.ref) -> ()
+; Measurement
+quake.mz %1 : (!quake.ref) -> !quake.measure
+      \end{lstlisting}
+    \column{0.46\textwidth}
+      \textbf{Quake SSA tracking:}
+      \vspace{4pt}
+      \begin{tabular}{@{}lp{3.2cm}@{}}
+        \toprule
+        Dictionary & Stores \\
+        \midrule
+        \texttt{ssa\_int} & \texttt{\%c0} $\to$ 0 (int)\\
+        \texttt{ssa\_float} & \texttt{\%cst} $\to$ 2.59 (float)\\
+        \texttt{ref\_qubit} & \texttt{\%1} $\to$ 0 (qubit)\\
+        \texttt{meas\_var} & \texttt{\%m} $\to$ 0 (meas)\\
+        \texttt{discrim} & \texttt{\%d} $\to$ 0 (bit)\\
+        \bottomrule
+      \end{tabular}
+      \vspace{6pt}
+      \begin{exampleblock}{\small Key Quake patterns}
+        \scriptsize
+        \begin{itemize}
+          \item Single-qubit: \texttt{quake.h \%ref}
+          \item CNOT: \texttt{quake.x [\%ctrl] \%tgt}\\
+                \hspace{14pt}(control in brackets)
+          \item Parametric: \texttt{quake.rx (\%cst) \%ref}
+          \item Conditional: \texttt{cc.if(\%discrim) \{...\}}
+        \end{itemize}
+      \end{exampleblock}
+      \vspace{4pt}
+      \hlg{Output:} same \texttt{MLIRCircuit} as Catalyst\\
+      \hlg{Result:} QIR generator works unchanged
+  \end{columns}
+\end{frame}
 
-    meas_idx = 0
+\begin{frame}[fragile]{Step 3: QIR Code Generation}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      The \texttt{MLIRCircuit} is converted to QIR using a template engine.
+      \vspace{4pt}
+      \begin{lstlisting}[style=pystyle]
+def _generate_entry_function(self, circuit):
     for op_type, op_data in circuit.ordered_ops:
         if op_type == "gate":
-            body.append(
-                self._generate_gate_call(op_data))
+            lines += self._gen_gate(op_data)
         elif op_type == "measurement":
-            body.append(
-                self._generate_measurement(
-                    op_data.qubit, meas_idx))
-            meas_idx += 1
+            lines += self._gen_meas(op_data)
         elif op_type == "conditional":
-            body.extend(
-                self._generate_conditional(op_data))
-
-    # Output recording
-    body.append(
-      f"  call void"
-      f" @__quantum__rt__array_record_output"
-      f"(i64 {meas_idx}, i8* null)")
+            lines += self._gen_cond(op_data)
       \end{lstlisting}
-    \column{0.46\textwidth}
-      \textbf{Gate call variants}
-      \begin{lstlisting}[style=qirstyle]
-; 1-qubit (no parameter)
-  call void @__quantum__qis__h__body(
-    %Qubit* null)
-
-; 1-qubit (with double parameter)
-  call void @__quantum__qis__rx__body(
-    double 2.590000e+00,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-
-; 2-qubit gate
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-      \end{lstlisting}
-
       \vspace{4pt}
-      \textbf{Qubit pointer encoding}
-
-      \smallskip
+      \begin{block}{Why \texttt{ordered\_ops}?}
+        \small
+        Gates and measurements are \textit{interleaved} in MLIR.
+        A flat ordered list is the only way to produce
+        semantically correct QIR.\\
+        \vspace{2pt}
+        \textbf{Wrong:} all gates, then all measurements\\
+        \textbf{Right:} H $\to$ CNOT $\to$ M $\to$ if-M-then-Z
+      \end{block}
+    \column{0.46\textwidth}
+      \textbf{Gate mapping (17 gates):}
+      \vspace{3pt}
       \begin{tabular}{@{}ll@{}}
         \toprule
-        Qubit & QIR pointer \\
+        Source gate & QIR function \\
         \midrule
-        0 & \texttt{\%Qubit* null} \\
-        $k > 0$ & \texttt{inttoptr(i64 k to \%Qubit*)} \\
+        H (Hadamard) & \texttt{h\_\_body} \\
+        X, Y, Z & \texttt{x/y/z\_\_body} \\
+        S, T & \texttt{s/t\_\_body} \\
+        S$^\dagger$, T$^\dagger$ & \texttt{s\_adj/t\_adj\_\_body} \\
+        RX, RY, RZ & \texttt{rx/ry/rz\_\_body}(angle)\\
+        CNOT & \texttt{cnot\_\_body}(ctrl, tgt)\\
+        CZ, SWAP & \texttt{cz/swap\_\_body} \\
+        Toffoli & \texttt{ccx\_\_body}(c,c,t) \\
         \bottomrule
       \end{tabular}
-  \end{columns}
-\end{frame}
-
-\begin{frame}[fragile]{QIR Generator: Conditional Branch Emission}
-  \begin{columns}[T]
-    \column{0.50\textwidth}
-      \begin{lstlisting}[style=pystyle]
-def _generate_conditional(self, cond):
-    lid = self.conditional_counter
-    self.conditional_counter += 1
-    suffix = "" if lid == 0 else str(lid)
-    result_ptr = get_result_pointer(
-        cond.condition_measurement_idx)
-
-    lines = [
-      f"  %cond{lid} = call i1"
-      f"    @__quantum__qis__read_result__body"
-      f"    (%Result* {result_ptr})",
-      f"  br i1 %cond{lid},"
-      f"    label %then{suffix},"
-      f"    label %else{suffix}",
-      f"then{suffix}:",
-    ]
-    for g in cond.then_gates:
-        lines.append(self._generate_gate_call(g))
-    lines += [
-      f"  br label %continue{suffix}",
-      f"else{suffix}:",
-      f"  br label %continue{suffix}",
-      f"continue{suffix}:",
-    ]
-    return lines
-      \end{lstlisting}
-    \column{0.46\textwidth}
-      \textbf{Generated QIR -- teleportation Z/X corrections}
-      \begin{lstlisting}[style=qirstyle]
-  %cond0 = call i1
-    @__quantum__qis__read_result__body(
-      %Result* inttoptr(i64 1 to %Result*))
-  br i1 %cond0, label %then, label %else
-
-then:
-  call void @__quantum__qis__z__body(
-    %Qubit* inttoptr(i64 2 to %Qubit*))
-  br label %continue
-
-else:
-  br label %continue
-
-continue:
-  %cond1 = call i1
-    @__quantum__qis__read_result__body(
-      %Result* null)
-  br i1 %cond1, label %then1, label %else1
-
-then1:
-  call void @__quantum__qis__x__body(
-    %Qubit* inttoptr(i64 2 to %Qubit*))
-  br label %continue1
-
-else1:
-  br label %continue1
-
-continue1:
-      \end{lstlisting}
-  \end{columns}
-\end{frame}
-
-\begin{frame}{Gate Mapping: 17 Gates Supported}
-  \begin{columns}[T]
-    \column{0.50\textwidth}
-      \centering\small
-      \begin{tabular}{@{}lll@{}}
-        \toprule
-        Catalyst Gate & QIR function & Type \\
-        \midrule
-        \texttt{Hadamard}  & \texttt{..h..body}   & 1q \\
-        \texttt{PauliX/Y/Z}& \texttt{..x/y/z..}   & 1q \\
-        \texttt{S / T}     & \texttt{..s/t..body} & 1q \\
-        \texttt{Sdg / Tdg} & \texttt{..sdg/tdg..} & 1q \\
-        \texttt{RX}        & \texttt{..rx..body}  & 1q+param \\
-        \texttt{RY}        & \texttt{..ry..body}  & 1q+param \\
-        \texttt{RZ / PhaseShift} & \texttt{..rz..body} & 1q+param \\
-        \texttt{CNOT}      & \texttt{..cnot..}    & 2q \\
-        \texttt{CZ}        & \texttt{..cz..body}  & 2q \\
-        \texttt{SWAP}      & \texttt{..swap..}    & 2q \\
-        \texttt{CY}        & \texttt{..cy..body}  & 2q \\
-        \texttt{Toffoli}   & \texttt{..ccx..body} & 3q \\
-        \texttt{CSWAP}     & \texttt{..cswap..}   & 3q \\
-        \bottomrule
-      \end{tabular}
-    \column{0.46\textwidth}
-      \textbf{Declaration signatures}
-
-      \smallskip
-      QIR requires forward declarations for every gate function used.
-      The generator collects all gate functions (including those inside
-      conditional blocks) and emits correct signatures:
-
-      \vspace{6pt}
-      \begin{tabular}{@{}lp{3.8cm}@{}}
-        \toprule
-        Gate type & Signature \\
-        \midrule
-        1q, no param & \texttt{void f(\%Qubit*)} \\
-        1q+param     & \texttt{void f(double, \%Qubit*)} \\
-        2q           & \texttt{void f(\%Qubit*, \%Qubit*)} \\
-        Conditional  & \texttt{i1 read\_result(\%Result*)} \\
-        \bottomrule
-      \end{tabular}
-
-      \vspace{6pt}
-      \textbf{Attributes block}
-      \begin{itemize}\small
-        \item \texttt{"entry\_point"}
-        \item \texttt{"required\_num\_qubits"="N"}
-        \item \texttt{"required\_num\_results"="M"}
-        \item \texttt{qir\_major\_version = 1}
-      \end{itemize}
-  \end{columns}
-\end{frame}
-
-%% ============================================================
-\section{Translation Examples}
-%% ============================================================
-
-\begin{frame}[fragile]{Example 1: Bell State $|\Phi^+\rangle$ (2 qubits)}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Catalyst MLIR input}
-      \begin{lstlisting}[style=mlirstyle]
-%0 = quantum.alloc( 2)
-%1 = quantum.extract %0[ 0]
-%out = quantum.custom "Hadamard"() %1
-
-%2 = quantum.extract %0[ 1]
-%out_0:2 = quantum.custom "CNOT"()
-    %out, %2
-
-%mres, %q = quantum.measure %out_0#0
-%mres_1, %q2 = quantum.measure %out_0#1
-      \end{lstlisting}
-      \textbf{SSA trace}
-
-      \smallskip
-      \begin{tabular}{@{}lll@{}}
-        \texttt{\%1}      & $\to$ & qubit 0 \\
-        \texttt{\%out}    & $\to$ & qubit 0 (post-H)\\
-        \texttt{\%2}      & $\to$ & qubit 1\\
-        \texttt{\%out\_0\#0} & $\to$ & qubit 0 (control)\\
-        \texttt{\%out\_0\#1} & $\to$ & qubit 1 (target)\\
-      \end{tabular}
-    \column{0.48\textwidth}
-      \textbf{Generated QIR}
-      \begin{lstlisting}[style=qirstyle]
-define void @main() #0 {
-entry:
-  call void
-    @__quantum__rt__initialize(i8* null)
-  call void @__quantum__qis__h__body(
-    %Qubit* null)
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-  call void @__quantum__qis__mz__body(
-    %Qubit* null, %Result* null)
-  call void @__quantum__qis__mz__body(
-    %Qubit* inttoptr(i64 1 to %Qubit*),
-    %Result* inttoptr(i64 1 to %Result*))
-  call void
-    @__quantum__rt__array_record_output(
-      i64 2, i8* null)
-  ret void
-}
-      \end{lstlisting}
-  \end{columns}
-\end{frame}
-
-\begin{frame}[fragile]{Example 2: 5-Qubit GHZ State}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{MLIR -- CNOT chain with SSA chaining}
-      \begin{lstlisting}[style=mlirstyle]
-%out_qubits = quantum.custom
-    "Hadamard"() %1
-; ssa_qubit["out_qubits"] = 0
-
-%out_qubits_0:2 = quantum.custom
-    "CNOT"() %out_qubits, %2
-; #0 = 0, #1 = 1
-
-%out_qubits_1:2 = quantum.custom
-    "CNOT"() %out_qubits_0#0, %3
-; #0 = 0 (traced!), #1 = 2
-
-%out_qubits_2:2 = quantum.custom
-    "CNOT"() %out_qubits_1#0, %4
-; #0 = 0 (traced!), #1 = 3
-
-%out_qubits_3:2 = quantum.custom
-    "CNOT"() %out_qubits_2#0, %5
-; #0 = 0 (traced!), #1 = 4
-      \end{lstlisting}
-    \column{0.48\textwidth}
-      \textbf{Generated QIR}
-      \begin{lstlisting}[style=qirstyle]
-  call void @__quantum__qis__h__body(
-    %Qubit* null)
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 2 to %Qubit*))
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 3 to %Qubit*))
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 4 to %Qubit*))
-      \end{lstlisting}
-
-      \begin{exampleblock}{Key insight}
-        All 4 CNOTs correctly emit \texttt{null} (qubit 0) as control,
-        traced through the \texttt{\#0} chain:
-        \texttt{out\_qubits\_0\#0 $\to$ out\_qubits\_1\#0 $\to$ ...}
-      \end{exampleblock}
-  \end{columns}
-\end{frame}
-
-\begin{frame}[fragile]{Example 3: Quantum Teleportation (3 qubits)}
-  \begin{columns}[T]
-    \column{0.40\textwidth}
-      \textbf{Circuit topology}
-
-      \vspace{6pt}
-      \begin{center}
-      \begin{tikzpicture}[
-        wire/.style={draw,-,thick},
-        gate/.style={draw,rectangle,minimum size=0.38cm,
-                     fill=mlirblue!20,font=\tiny,inner sep=1pt},
-        meas/.style={draw,circle,minimum size=0.35cm,
-                     fill=ssaorange!30,font=\tiny},
-        cond/.style={draw,rectangle,rounded corners=2pt,
-                     minimum width=0.48cm,fill=condred!20,
-                     font=\tiny,inner sep=1pt},
-        scale=0.88
-      ]
-        \draw[wire](0,0)node[left,font=\tiny]{q0}--+(6,0);
-        \draw[wire](0,-0.65)node[left,font=\tiny]{q1}--+(6,0);
-        \draw[wire](0,-1.3)node[left,font=\tiny]{q2}--+(6,0);
-        \node[gate] at (0.7,-0.65){H};
-        \draw[-,thick,mlirblue](0.7,-0.65)--(0.7,-1.3);
-        \node[draw,circle,fill=mlirblue,inner sep=1.5pt]
-          at (0.7,-0.65){};
-        \node[draw,circle,fill=white,inner sep=2pt,
-              minimum size=0.3cm] at (0.7,-1.3){};
-        \draw[-,thick,mlirblue](1.5,0)--(1.5,-0.65);
-        \node[draw,circle,fill=mlirblue,inner sep=1.5pt]
-          at (1.5,0){};
-        \node[draw,circle,fill=white,inner sep=2pt,
-              minimum size=0.3cm] at (1.5,-0.65){};
-        \node[meas] at (2.3,-0.65){M};
-        \node[gate] at (2.9,0){H};
-        \node[meas] at (3.6,0){M};
-        \draw[dashed,condred](2.3,-0.65)--(4.2,-1.3);
-        \draw[dashed,condred](3.6,0)--(4.8,-1.3);
-        \node[cond] at (4.2,-1.3){Z?};
-        \node[cond] at (4.8,-1.3){X?};
-        \node[meas] at (5.5,-1.3){M};
-      \end{tikzpicture}
-      \end{center}
-
-      \smallskip
-      \small 3 qubits, 3 measurements, 2 conditionals.
-
-      \smallskip
-      Z on q2 if M(q1)=1; X on q2 if M(q0)=1
-    \column{0.56\textwidth}
-      \textbf{Generated QIR (key fragment)}
-      \begin{lstlisting}[style=qirstyle]
-  call void @__quantum__qis__h__body(
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-  call void @__quantum__qis__cnot__body(
-    %Qubit* inttoptr(i64 1 to %Qubit*),
-    %Qubit* inttoptr(i64 2 to %Qubit*))
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-  call void @__quantum__qis__mz__body(
-    %Qubit* inttoptr(i64 1 to %Qubit*),
-    %Result* null)
-  call void @__quantum__qis__h__body(
-    %Qubit* null)
-  call void @__quantum__qis__mz__body(
-    %Qubit* null,
-    %Result* inttoptr(i64 1 to %Result*))
-  %cond0 = call i1
-    @__quantum__qis__read_result__body(
-      %Result* inttoptr(i64 1 to %Result*))
-  br i1 %cond0, label %then, label %else
-then:
-  call void @__quantum__qis__z__body(
-    %Qubit* inttoptr(i64 2 to %Qubit*))
-  br label %continue
-      \end{lstlisting}
-  \end{columns}
-\end{frame}
-
-\begin{frame}[fragile]{Example 4: Parametric Gate -- RX with SSA Constant}
-  \begin{columns}[T]
-    \column{0.50\textwidth}
-      \textbf{Catalyst MLIR}
-      \begin{lstlisting}[style=mlirstyle]
-%cst = arith.constant 2.590000e+00 : f64
-; ssa_constants["cst"] = 2.59
-
-%0 = quantum.alloc( 2)
-%1 = quantum.extract %0[ 1]   ; qubit 1
-%2 = quantum.extract %0[ 0]   ; qubit 0
-%out_q:2 = quantum.custom
-    "CNOT"() %1, %2
-%out_q0:2 = quantum.custom
-    "SWAP"() %out_q#1, %out_q#0
-%out_q1 = quantum.custom
-    "Hadamard"() %out_q0#1
-%out_q2 = quantum.custom
-    "S"() %out_q0#0
-%out_q3 = quantum.custom
-    "RX"(%cst) %out_q2
-; params = [2.59] resolved from ssa_constants
-%out_q4 = quantum.custom
-    "PauliY"() %out_q3
-%out_q5:2 = quantum.custom
-    "CNOT"() %out_q4, %out_q1
-      \end{lstlisting}
-    \column{0.46\textwidth}
-      \textbf{Generated QIR}
-      \begin{lstlisting}[style=qirstyle]
-  call void @__quantum__qis__cnot__body(
-    %Qubit* inttoptr(i64 1 to %Qubit*),
-    %Qubit* null)
-  call void @__quantum__qis__swap__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-  call void @__quantum__qis__h__body(
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-  call void @__quantum__qis__s__body(
-    %Qubit* null)
-  call void @__quantum__qis__rx__body(
-    double 2.590000e+00,
-    %Qubit* null)
-  call void @__quantum__qis__y__body(
-    %Qubit* null)
-  call void @__quantum__qis__cnot__body(
-    %Qubit* null,
-    %Qubit* inttoptr(i64 1 to %Qubit*))
-      \end{lstlisting}
-      \begin{exampleblock}{\small Parameter path}
-        \small
-        \texttt{\%cst} $\xrightarrow{\text{arith.constant}}$ 2.59
-        stored in \texttt{ssa\_constants}.
-        Retrieved in \texttt{\_parse\_parameters},
-        formatted as \texttt{2.590000e+00} (LLVM notation).
+      \vspace{4pt}
+      \begin{exampleblock}{\small Qubit addressing in QIR}
+        \scriptsize
+        Qubit 0: \texttt{\%Qubit* null}\\
+        Qubit 1: \texttt{\%Qubit* inttoptr(i64 1 to \%Qubit*)}\\
+        Qubit n: \texttt{\%Qubit* inttoptr(i64 n to \%Qubit*)}
       \end{exampleblock}
   \end{columns}
 \end{frame}
 
 %% ============================================================
-\section{Phase 4: RAG Knowledge Base}
+\section{Phase 4--5: Agentic Pipeline, Multi-Provider LLM \& CLI}
 %% ============================================================
 
-\begin{frame}{RAG System: Retrieval-Augmented Generation}
-  \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{Pipeline}
-
-      \vspace{6pt}
-      \begin{center}
-      \begin{tikzpicture}[
-        node distance=0.3cm,
-        box/.style={draw,rounded corners=3pt,minimum width=3.5cm,
-                    minimum height=0.45cm,font=\scriptsize,
-                    text centered,inner sep=2pt},
-        arr/.style={-Stealth,thick},
-        src/.style={box,fill=ragcyan!20,draw=ragcyan},
-        proc/.style={box,fill=agentpurple!20,draw=agentpurple},
-        db/.style={box,fill=mlirblue!20,draw=mlirblue},
-      ]
-        \node[src](g){GitHub: QIR Alliance specs};
-        \node[src,below=of g](a){arXiv: MLIR/QIR papers};
-        \node[src,below=of a](e){Gate mappings \& patterns};
-        \node[proc,below=0.5cm of e](ch){Document Chunker (markdown-aware)};
-        \node[proc,below=of ch](em){SentenceTransformer embeddings};
-        \node[db,below=of em](cr){ChromaDB (persistent)};
-        \node[proc,below=of cr](kb){KnowledgeBase.query()};
-        \draw[arr,ragcyan](g)--(ch);
-        \draw[arr,ragcyan](a)--(ch);
-        \draw[arr,ragcyan](e)--(ch);
-        \draw[arr,agentpurple](ch)--(em);
-        \draw[arr,agentpurple](em)--(cr);
-        \draw[arr,mlirblue](cr)--(kb);
-      \end{tikzpicture}
-      \end{center}
-    \column{0.48\textwidth}
-      \textbf{Knowledge sources}
-      \begin{itemize}
-        \item \hlc{QIR Alliance GitHub} -- specification docs
-        \item \hlc{PennyLane Catalyst} -- dialect documentation
-        \item \hlc{CUDA Quantum} -- Quake dialect docs
-        \item \hlc{arXiv 2101.11365} -- MLIR for quantum computing
-        \item \hlc{arXiv 2303.14500} -- QIR specification paper
-        \item Gate mapping reference tables
-        \item Translation pattern examples
-      \end{itemize}
-
-      \vspace{6pt}
-      \textbf{Embedding model}
-
-      \texttt{all-MiniLM-L6-v2} via SentenceTransformers
-      (384-dimensional dense vectors)
-
-      \vspace{6pt}
-      \textbf{Query interface}
-
-      \texttt{KnowledgeBase.query(text, n=5)}
-      returns ranked documents by cosine similarity.
-      Used by \texttt{RAGTool} in the agent system.
-  \end{columns}
-\end{frame}
-
-%% ============================================================
-\section{Phase 5: Multi-Agent System}
-%% ============================================================
-
-\begin{frame}{Multi-Agent System: CrewAI Orchestration}
+\begin{frame}[t]{Intelligent Translation Routing}
   \begin{center}
   \begin{tikzpicture}[
-    node distance=0.45cm and 0.9cm,
-    box/.style={draw,rounded corners=4pt,minimum width=2.8cm,
-                minimum height=0.6cm,font=\scriptsize\bfseries,
-                text centered,inner sep=3pt},
+    box/.style={draw,rounded corners=3pt,minimum width=2.4cm,
+                minimum height=0.50cm,font=\scriptsize\bfseries,
+                align=center,text centered,inner sep=2pt},
     arr/.style={-Stealth,thick},
-    mgr/.style={box,fill=agentpurple!25,draw=agentpurple,
-               minimum width=4.2cm},
-    ta/.style={box,fill=mlirblue!25,draw=mlirblue},
-    va/.style={box,fill=ssaorange!25,draw=ssaorange},
-    tool/.style={box,fill=ragcyan!20,draw=ragcyan,
-                 minimum width=2.4cm,minimum height=0.42cm,
-                 font=\tiny},
+    inp/.style={box,fill=mlirblue!15,draw=mlirblue},
+    det/.style={box,fill=qirgreen!15,draw=qirgreen},
+    ai/.style={box,fill=agentpurple!15,draw=agentpurple},
+    vr/.style={box,fill=ssaorange!15,draw=ssaorange},
+    outnode/.style={box,fill=qirgreen!30,draw=qirgreen},
   ]
-    \node[mgr](crew){CrewManager (max 3 iterations)};
-    \node[ta,below left=0.9cm and 0.4cm of crew](ta){Translation Agent};
-    \node[va,below right=0.9cm and 0.4cm of crew](va){Verification Agent};
-    \node[tool,below=0.4cm of ta](rag){RAG Tool (ChromaDB)};
-    \node[tool,below=0.2cm of rag](llm1){Ollama LLM};
-    \node[tool,below=0.4cm of va](gc){Gate Counter Tool};
-    \node[tool,below=0.2cm of gc](sim){Simulation Tool};
-    \draw[arr,agentpurple](crew)--(ta)
-      node[midway,above left,font=\tiny]{translate};
-    \draw[arr,agentpurple](crew)--(va)
-      node[midway,above right,font=\tiny]{verify};
-    \draw[arr,ssaorange,dashed](va)--(ta)
-      node[midway,below,font=\tiny]{feedback};
-    \draw[arr,mlirblue](ta)--(rag);
-    \draw[arr,mlirblue](ta)--(llm1);
-    \draw[arr,ssaorange](va)--(gc);
-    \draw[arr,ssaorange](va)--(sim);
+    \node[inp](mlir){MLIR Input};
+    \node[det,right=1.0cm of mlir](det){Dialect\\Detection};
+
+    % Known path (top)
+    \node[det,above right=0.4cm and 0.8cm of det](dparse){Deterministic\\Parser};
+    \node[det,right=0.7cm of dparse](qgen){QIR\\Generator};
+
+    % Unknown path (bottom)
+    \node[ai,below right=0.4cm and 0.8cm of det](web){Web Fetch\\Tool};
+    \node[ai,right=0.7cm of web](atrans){Translation\\Agent (LLM)};
+
+    % Verification (shared)
+    \node[vr,right=0.7cm of qgen,yshift=-0.8cm](verif){Verification\\Pipeline};
+    \node[outnode,right=0.8cm of verif](qirout){QIR\\Output};
+
+    % Repair
+    \node[ai,below=0.55cm of verif](repair){Repair Agent\\(LLM feedback)};
+
+    % Arrows
+    \draw[arr,mlirblue](mlir)--(det);
+    \draw[arr,qirgreen](det.north east)--node[above,font=\tiny,text=qirgreen]{known}(dparse.west);
+    \draw[arr,agentpurple](det.south east)--node[below,font=\tiny,text=agentpurple]{unknown}(web.west);
+    \draw[arr,qirgreen](dparse)--(qgen);
+    \draw[arr,qirgreen](qgen.east)-|(verif.north);
+    \draw[arr,agentpurple](web)--(atrans);
+    \draw[arr,agentpurple](atrans.east)-|(verif.south);
+    \draw[arr,qirgreen](verif)--node[above,font=\tiny]{PASS}(qirout);
+    \draw[arr,ssaorange,dashed](verif.south)--node[right,font=\tiny]{FAIL}(repair.north);
+    \draw[arr,ssaorange,dashed](repair.west)--++(-0.5,0)|-(atrans.south);
   \end{tikzpicture}
   \end{center}
-  \vspace{6pt}
+  \vspace{4pt}
   \begin{columns}[T]
-    \column{0.48\textwidth}
-      \textbf{TranslationAgent}
+    \column{0.32\textwidth}
+      \badge{qirgreen}{Known dialect}
+      \vspace{3pt}
+      {\small SSA-aware parser + QIR generator (deterministic, \textbf{no LLM needed}).}
+    \column{0.32\textwidth}
+      \badge{agentpurple}{Unknown dialect}
+      \vspace{3pt}
+      {\small Agent fetches spec via \textbf{WebFetchTool}, cross-refs RAG, then generates QIR.}
+    \column{0.32\textwidth}
+      \badge{ssaorange}{Repair loop}
+      \vspace{3pt}
+      {\small On FAIL: structured feedback (gate diff + TVD) sent to LLM. Up to 3 iterations.}
+  \end{columns}
+\end{frame}
 
-      \small Role: MLIR-to-QIR Specialist.
-      Uses RAGTool to retrieve relevant specs and patterns,
-      then calls Ollama LLM to generate QIR.
-      Returns \texttt{TranslationResult} with \texttt{qir\_code},
-      \texttt{iterations}, \texttt{success}.
-    \column{0.48\textwidth}
-      \textbf{VerificationAgent}
+\begin{frame}[fragile]{Agentic Pipeline: \texttt{translate\_with\_verification()}}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      The \texttt{CrewManager} orchestrates the full pipeline:
+      \vspace{4pt}
+      \begin{lstlisting}[style=pystyle]
+# Phase 0 -- dialect routing
+try:
+    dialect = MLIRParser().get_detected_dialect(mlir)
+    is_known = True          # Catalyst or Quake
+except UnsupportedDialectError:
+    dialect = infer_hint(mlir)  # namespace scan
+    is_known = False
 
-      \small Role: QIR Verification Specialist.
-      Uses GateCounterTool (exact match) and SimulationTool
-      (statistical comparison). Returns feedback dict for
-      the next iteration if verification fails.
+# Phase 1 -- initial QIR
+if is_known:
+    qir = QIRGenerator().generate(
+              MLIRParser().parse(mlir))
+    path = "deterministic"
+else:
+    agent.attach_web_tools()  # WebFetchTool
+    qir = agent.translate_with_feedback(
+              mlir, dialect, iteration=1)
+    path = "ai_agent"
+
+# Phase 2 -- verify + repair loop
+for i in range(1, max_iterations + 1):
+    vr = run_verification_pipeline(mlir, qir)
+    if vr["gate_ok"] and vr["tvd_ok"]:
+        return SUCCESS
+    feedback = build_feedback(vr)   # structured
+    qir = agent.translate_with_feedback(
+              mlir, dialect, feedback,
+              prev_qir=qir, iteration=i+1)
+    path = "deterministic+repair"
+      \end{lstlisting}
+    \column{0.44\textwidth}
+      \begin{block}{Translation paths}
+        \scriptsize
+        \begin{tabular}{@{}lp{2.8cm}@{}}
+          \toprule
+          Path & When \\
+          \midrule
+          \texttt{deterministic} & Known dialect, passes verify on first try \\[3pt]
+          \texttt{ai\_agent} & Unknown dialect --- agent translates \\[3pt]
+          \texttt{deterministic+repair} & Known dialect fails verify; agent repairs \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+      \vspace{6pt}
+      \begin{exampleblock}{Structured repair feedback}
+        \scriptsize
+        \texttt{GATE COUNT MISMATCH:}\\
+        \quad\texttt{Gate 'rx': MLIR=2, QIR=1 (diff -1)}\\
+        \quad\texttt{Missing in QIR: rx}\\[2pt]
+        \texttt{SIMULATION MISMATCH:}\\
+        \quad\texttt{TVD = 72.3\% (need >= 95\%)}\\
+        \quad\texttt{Check gate order \& qubit indexing}\\[2pt]
+        \texttt{AGENT ANALYSIS:}\\
+        \quad\texttt{rx gate at qubit 1 missing}
+      \end{exampleblock}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Multi-Provider LLM Support}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      The tool now supports \textbf{three LLM backends}:
+      \vspace{4pt}
+      \begin{tabular}{@{}lp{3.5cm}@{}}
+        \toprule
+        Provider & Description \\
+        \midrule
+        \hlq{Ollama} & Local GPU inference.\\
+                     & No data leaves the machine.\\
+                     & Requires GPU ($\ge$8 GB VRAM). \\[4pt]
+        \hlc{HuggingFace} & Serverless cloud API.\\
+        \hlc{Inference API} & \textbf{Free} tier with \texttt{HF\_TOKEN}.\\
+                             & No GPU required at all. \\[4pt]
+        \hl{OpenAI API} & Paid cloud. Drop-in support\\
+                        & via \texttt{api\_key\_env} field. \\
+        \bottomrule
+      \end{tabular}
+      \vspace{6pt}
+      \begin{exampleblock}{New: \texttt{gpt-oss-20b} (free)}
+        \scriptsize
+        Open-weight 20B model by OpenAI (Apache 2.0).\\
+        Runs on HuggingFace Inference API --- no GPU needed.\\[2pt]
+        \texttt{export HF\_TOKEN=hf\_...}\\
+        \quad (free at \texttt{huggingface.co/settings/tokens})\\[2pt]
+        litellm model string:\\
+        \texttt{huggingface/openai/gpt-oss-20b}
+      \end{exampleblock}
+    \column{0.46\textwidth}
+      \textbf{All model keys} (\texttt{--list-models}):
+      \vspace{4pt}
+      \begin{tabular}{@{}llll@{}}
+        \toprule
+        Key & Size & Backend & GPU? \\
+        \midrule
+        \texttt{llama3.1-8b} & 8B & Ollama & Yes \\
+        \texttt{llama3.1-70b-q4} & 70B & Ollama & Yes \\
+        \texttt{codellama-13b} & 13B & Ollama & Yes \\
+        \texttt{codellama-34b-q4} & 34B & Ollama & Yes \\
+        \texttt{gpt-oss-20b} & 20B & HF API & \hlg{No} \\
+        \bottomrule
+      \end{tabular}
+      \vspace{6pt}
+      \begin{block}{Sidebar model info}
+        \scriptsize
+        The web UI and CLI detect the provider and show
+        the appropriate status:\\[2pt]
+        Ollama: VRAM required, \texttt{ollama serve} must be running.\\[2pt]
+        HuggingFace: shows \hlg{\faCheckCircle\ HF\_TOKEN found} or
+        \hlr{\faExclamationTriangle\ Set HF\_TOKEN}.\\[2pt]
+        OpenAI: shows API key status.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{New: CLI (\texttt{translate.py})}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      A developer-facing command-line interface:
+      \begin{lstlisting}[style=pystyle]
+# Translate a file (QIR -> stdout, meta -> stderr)
+python translate.py examples/mlir/bell_state.mlir
+
+# Read from stdin (pipe-friendly)
+cat circuit.mlir | python translate.py -
+
+# Save QIR to file, metadata to stdout
+python translate.py circuit.mlir -o circuit.ll
+
+# Full agentic pipeline with Ollama
+python translate.py circuit.mlir --model llama3.1-8b
+
+# Free HuggingFace model (no GPU)
+export HF_TOKEN=hf_...
+python translate.py circuit.mlir --model gpt-oss-20b
+
+# JSON output -- all fields incl. QIR, gate counts,
+# verification, timing
+python translate.py circuit.mlir --json
+
+# Skip simulation (fast: gate counts only)
+python translate.py circuit.mlir --no-verify
+
+# List available LLM model keys
+python translate.py --list-models
+      \end{lstlisting}
+    \column{0.44\textwidth}
+      \textbf{Output stream design:}
+      \vspace{4pt}
+      \begin{tabular}{@{}lp{1.6cm}p{1.6cm}@{}}
+        \toprule
+        Scenario & QIR & Metadata \\
+        \midrule
+        Default & stdout & \textbf{stderr}\\
+        \texttt{-o file} & file & stdout \\
+        \texttt{--json} & stdout & stdout (JSON) \\
+        \texttt{-q} & stdout & \textit{silent} \\
+        \bottomrule
+      \end{tabular}
+      \vspace{6pt}
+      \begin{exampleblock}{Metadata shown}
+        \scriptsize
+        \begin{itemize}
+          \item Detected dialect
+          \item Translation path (\texttt{deterministic} / \texttt{ai\_agent} / \texttt{deterministic+repair})
+          \item Translation time (ms/s)
+          \item Iterations used
+          \item Gate count table (MLIR vs QIR, match/mismatch)
+          \item TVD similarity + pass/fail
+          \item Shot distributions (both simulators)
+        \end{itemize}
+      \end{exampleblock}
+      \vspace{4pt}
+      \begin{block}{Exit codes}
+        \scriptsize
+        0 = verified \checkmark \quad 1 = failed / error\\
+        2 = unknown dialect (use \texttt{--model})\\
+        130 = Ctrl-C
+      \end{block}
   \end{columns}
 \end{frame}
 
@@ -1122,358 +930,625 @@ then:
 \section{Phase 6: Verification Engine}
 %% ============================================================
 
-\begin{frame}{Four-Level Verification Pipeline}
-  \begin{center}
-  \begin{tikzpicture}[
-    level/.style={draw,rounded corners=3pt,minimum width=11cm,
-                  minimum height=0.6cm,font=\scriptsize,
-                  text centered,inner sep=4pt},
-    arr/.style={-Stealth,thick,gray},
-  ]
-    \node[level,fill=qirgreen!20,draw=qirgreen](l1){%
-      \textbf{Level 1 -- Gate Count Comparison:}
-      exact match of gate types and counts (tolerance = 0)};
-    \node[level,fill=mlirblue!20,draw=mlirblue,
-      below=0.2cm of l1](l2){%
-      \textbf{Level 2 -- QIR Execution:}
-      run via qir-runner or Qiskit; compare measurement distributions};
-    \node[level,fill=ssaorange!20,draw=ssaorange,
-      below=0.2cm of l2](l3){%
-      \textbf{Level 3 -- MLIR Execution:}
-      run original via PennyLane Catalyst or CUDA Quantum backend};
-    \node[level,fill=agentpurple!20,draw=agentpurple,
-      below=0.2cm of l3](l4){%
-      \textbf{Level 4 -- Statistical Similarity:}
-      TVD and KL divergence; pass threshold = 95\%};
-    \draw[arr](l1)--(l2); \draw[arr](l2)--(l3); \draw[arr](l3)--(l4);
-  \end{tikzpicture}
-  \end{center}
-  \vspace{6pt}
+\begin{frame}[fragile]{4-Level Verification Pipeline}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      After translation the tool \textbf{automatically} confirms correctness:
+      \vspace{6pt}
+      \begin{tabular}{@{}clp{3.8cm}@{}}
+        \toprule
+        & Method & What is checked \\
+        \midrule
+        \badge{mlirblue}{1} & Gate count & Same number of each gate type \\[4pt]
+        \badge{qirgreen}{2} & QIR exec & Run QIR on \texttt{qirrunner} (real simulator) \\[4pt]
+        \badge{ssaorange}{3} & MLIR exec & Run MLIR on Catalyst (\texttt{@qjit}) / cudaq \\[4pt]
+        \badge{agentpurple}{4} & TVD & Compare shot distributions $\ge$ 95\% \\
+        \bottomrule
+      \end{tabular}
+      \vspace{8pt}
+      \begin{exampleblock}{Real Bell state result (1000 shots)}
+        \small
+        QIR runner: $\{$\texttt{00}: 514, \texttt{11}: 486$\}$\\
+        Catalyst: $\{$\texttt{00}: 504, \texttt{11}: 496$\}$\\
+        TVD similarity: \hlg{98.6\%} $\ge$ 95\% $\Rightarrow$ \hlg{\checkmark PASS}
+      \end{exampleblock}
+    \column{0.44\textwidth}
+      \textbf{Three simulator backends (pluggable):}
+      \vspace{4pt}
+      \begin{tabular}{@{}lp{3.0cm}@{}}
+        \toprule
+        Runner & Technology \\
+        \midrule
+        \texttt{QIRRunner} & \texttt{qirrunner} 0.9.1\\
+                           & (QIR Alliance wheel,\\
+                           & no LLVM needed) \\[4pt]
+        \texttt{CatalystRunner} & PennyLane Catalyst\\
+                                & \texttt{@catalyst.qjit}\\
+                                & + \texttt{lightning.qubit} \\[4pt]
+        \texttt{QuakeRunner} & CUDA Quantum\\
+                             & \texttt{cudaq.sample()}\\
+                             & (subprocess isolated) \\
+        \bottomrule
+      \end{tabular}
+      \vspace{4pt}
+      \begin{alertblock}{\small Subprocess isolation}
+        \scriptsize
+        cudaq and qirrunner share LLVM symbols $\Rightarrow$
+        segfault if both loaded in the same process.
+        \texttt{QuakeRunner} runs cudaq in a separate
+        subprocess to avoid the conflict.
+      \end{alertblock}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Gate Count Verification --- Dual Dialect Support}
   \begin{columns}[T]
     \column{0.50\textwidth}
-      \textbf{Simulator registry (plugin-based)}
-      \begin{itemize}\small
-        \item \texttt{QIRRunner} -- calls \texttt{qir-runner} executable
-        \item \texttt{CatalystRunner} -- PennyLane runtime
-        \item \texttt{QiskitRunner} -- Qiskit Aer simulator
-        \item Add new backends by subclassing \texttt{BaseRunner}
-      \end{itemize}
+      The gate counter handles both MLIR dialects:
+      \vspace{4pt}
+      \begin{lstlisting}[style=pystyle]
+def count_mlir_gates(self, mlir_code):
+    # Quake dialect
+    if "quake.alloca" in mlir_code:
+        # H, Y, Z, S, T, SDG, TDG
+        for gate in ('h','y','z','s','t',...):
+            n = re.findall(
+              rf'quake\.{gate}\s+%', mlir_code)
+            counts[gate] = len(n)
+
+        # CNOT vs plain X
+        n_cnot = re.findall(
+            r'quake\.x\s+\[', mlir_code)
+        n_x = re.findall(
+            r'quake\.x\s+%', mlir_code)
+
+        # Parametric (RX, RY, RZ, R1)
+        for gate in ('rx','ry','rz','r1'):
+            n = re.findall(
+              rf'quake\.{gate}\s*\(', mlir_code)
+      \end{lstlisting}
     \column{0.46\textwidth}
-      \textbf{Metrics computed}
-      \begin{itemize}\small
-        \item Total Variation Distance (TVD)
-        \item KL divergence (distribution comparison)
-        \item Circuit depth estimation
-        \item Missing / extra gate reporting
-      \end{itemize}
+      \textbf{Bell State check:}
+      \vspace{4pt}
+      \begin{tabular}{@{}lll@{}}
+        \toprule
+        Gate & MLIR & QIR \\
+        \midrule
+        \texttt{h}    & 1 & 1 \\
+        \texttt{cnot} & 1 & 1 \\
+        \bottomrule
+        \multicolumn{3}{l}{\hlg{Gate Match: \checkmark}} \\
+      \end{tabular}
+      \vspace{8pt}
+      \textbf{GHZ-5 check:}
+      \vspace{4pt}
+      \begin{tabular}{@{}lll@{}}
+        \toprule
+        Gate & MLIR & QIR \\
+        \midrule
+        \texttt{h}    & 1 & 1 \\
+        \texttt{cnot} & 4 & 4 \\
+        \bottomrule
+        \multicolumn{3}{l}{\hlg{Gate Match: \checkmark}} \\
+      \end{tabular}
+      \vspace{6pt}
+      \begin{block}{\small Key distinction}
+        \scriptsize
+        \texttt{quake.x [\%ctrl] \%tgt} = CNOT\\
+        \texttt{quake.x \%tgt} = plain X gate\\
+        The regex detects presence of \texttt{[} after \texttt{quake.x}
+      \end{block}
   \end{columns}
 \end{frame}
 
 %% ============================================================
-\section{Phase 7: Web Interface}
+\section{Phase 7: Web Interface \& Session Logging}
 %% ============================================================
 
-\begin{frame}{Streamlit Web Interface}
+\begin{frame}[t]{Streamlit Web Interface}
   \begin{columns}[T]
-    \column{0.45\textwidth}
-      \textbf{Features}
-      \begin{itemize}
-        \item 50/50 split layout (MLIR left, QIR right)
-        \item 600px monospace text areas
-        \item Built-in example loader
-        \item LLM model selector (8B / 13B / 70B)
-        \item Multi-agent mode toggle
-        \item Download generated \texttt{.ll} file
-        \item Circuit metrics display
-      \end{itemize}
-
-      \vspace{8pt}
-      \textbf{Launch}
-
-      \texttt{streamlit run src/ui/app.py}
-
-      \vspace{8pt}
-      \textbf{Built-in examples}
-      \begin{itemize}\small
-        \item Bell State, GHZ-5, Teleportation
-        \item Random circuits (658, 6994, \ldots)
-      \end{itemize}
-    \column{0.51\textwidth}
+    \column{0.52\textwidth}
       \begin{center}
-      \begin{tikzpicture}[scale=0.88]
-        \draw[rounded corners=4pt,draw=gray,fill=gray!8]
-          (0,0) rectangle (7.8,5.2);
-        \node[above,font=\scriptsize\bfseries] at (3.9,5.2)
-          {Streamlit UI};
-        %% Sidebar
-        \draw[fill=mlirblue!10,draw=mlirblue,rounded corners=2pt]
-          (0.1,0.1) rectangle (1.9,5.1);
-        \node[font=\tiny\bfseries] at (1.0,4.8){Settings};
-        \node[font=\tiny,align=left] at (1.0,4.3)
-          {Model: llama3.1:8b};
-        \node[font=\tiny,align=left] at (1.0,3.8)
-          {Agent: OFF/ON};
-        \node[font=\tiny\bfseries] at (1.0,3.2){Examples};
-        \node[font=\tiny] at (1.0,2.8){Bell State};
-        \node[font=\tiny] at (1.0,2.4){GHZ-5};
-        \node[font=\tiny] at (1.0,2.0){Teleportation};
-        %% MLIR panel
-        \draw[fill=mlirblue!5,draw=mlirblue,rounded corners=2pt]
-          (2.1,1.3) rectangle (4.85,5.1);
-        \node[font=\tiny\bfseries] at (3.48,4.8){MLIR Input};
-        \node[font=\tiny,align=left] at (3.48,4.3)
-          {\texttt{quantum.alloc(2)}};
-        \node[font=\tiny,align=left] at (3.48,3.8)
-          {\texttt{quantum.custom}};
-        \node[font=\tiny,align=left] at (3.48,3.3)
-          {\texttt{"Hadamard"()\%1}};
-        %% QIR panel
-        \draw[fill=qirgreen!5,draw=qirgreen,rounded corners=2pt]
-          (5.0,1.3) rectangle (7.7,5.1);
-        \node[font=\tiny\bfseries] at (6.35,4.8){QIR Output};
-        \node[font=\tiny,align=left] at (6.35,4.3)
-          {\texttt{call void}};
-        \node[font=\tiny,align=left] at (6.35,3.8)
-          {\texttt{@..h\_\_body}};
-        \node[font=\tiny,align=left] at (6.35,3.3)
-          {\texttt{(\%Qubit* null)}};
-        %% Buttons
-        \draw[fill=mlirblue!60,draw=mlirblue,rounded corners=2pt]
-          (2.1,0.2) rectangle (4.85,1.1);
-        \node[font=\tiny\color{white}] at (3.48,0.65)
-          {\textbf{Translate to QIR}};
-        \draw[fill=qirgreen!60,draw=qirgreen,rounded corners=2pt]
-          (5.0,0.2) rectangle (7.7,1.1);
-        \node[font=\tiny\color{white}] at (6.35,0.65)
-          {\textbf{Download .ll}};
+      \begin{tikzpicture}[
+        ui/.style={draw,rounded corners=3pt,font=\scriptsize,
+                   inner sep=3pt,fill=codebg,text=white},
+        lbl/.style={font=\tiny,text=gray},
+        scale=0.85,
+      ]
+        % Sidebar
+        \draw[draw=mlirblue,fill=mlirblue!10,rounded corners=4pt]
+          (0,0) rectangle (2.2,5.2);
+        \node[lbl,above] at (1.1,5.2){Sidebar};
+        \node[ui,text width=2.0cm,align=left] at (1.1,4.5)
+          {\tiny [Catalyst] Bell State\\
+                 {[Catalyst]} GHZ\\
+                 {[Quake] Bell State}\\
+                 {[Quake] GHZ-5}\\
+                 {[Quake] Teleportation}};
+        \node[ui,text width=2.0cm,align=left] at (1.1,3.2)
+          {\tiny Model: llama3.1:8b\\
+                 Shots: 1000};
+        \node[ui,draw=qirgreen,text width=2.0cm,align=center] at (1.1,2.2)
+          {\tiny Run Verification};
+
+        % Input col
+        \draw[draw=ssaorange,fill=ssaorange!10,rounded corners=4pt]
+          (2.5,0) rectangle (5.5,5.2);
+        \node[lbl,above] at (4.0,5.2){MLIR Input};
+        \node[ui,text width=2.7cm,align=left] at (4.0,3.8)
+          {\tiny module \{\\
+           \quad quantum.alloc...\\
+           \quad quantum.custom...\\
+           \quad \ldots};
+        \node[ui,draw=qirgreen,text width=2.7cm,align=center] at (4.0,1.7)
+          {\tiny [Translate]};
+        \node[lbl] at (4.0,1.1){\tiny Time: 2.3ms};
+
+        % Output col
+        \draw[draw=qirgreen,fill=qirgreen!10,rounded corners=4pt]
+          (5.8,0) rectangle (9.0,5.2);
+        \node[lbl,above] at (7.4,5.2){QIR Output};
+        \node[ui,text width=2.9cm,align=left] at (7.4,4.0)
+          {\tiny define void @main() \{\\
+           \quad call void @h\_\_body\\
+           \quad call void @cnot\_\_body\\
+           \quad \ldots};
+        \node[ui,draw=qirgreen,text width=2.9cm,align=left] at (7.4,2.0)
+          {\tiny \hlg{PASS}\,Gate match \checkmark\\
+           TVD 98.6\% \checkmark\\
+           {[Bar charts]}};
       \end{tikzpicture}
       \end{center}
+    \column{0.44\textwidth}
+      \textbf{Features:}
+      \vspace{4pt}
+      \begin{itemize}\small
+        \item Dropdown with ready-made examples\\
+              for both Catalyst and Quake dialects
+        \item \textbf{Three metric columns} below QIR viewer:
+              Translation Time, Iterations,
+              \hlo{Translation Path}
+        \item \textbf{Model selector} with provider labels:\\
+              \faLaptop\thinspace\texttt{Local} (Ollama) or
+              \faCloud\thinspace\texttt{API} (HuggingFace/OpenAI)
+        \item Provider-specific info card (VRAM, token status)
+        \item \textbf{Bar charts} compare shot distributions
+          (QIR blue, MLIR runner orange)
+        \item \textbf{Gate count table} with MATCH/MISMATCH
+        \item Verification pre-computed during agentic run;\\
+              on-demand for fast deterministic path
+        \item Download generated QIR as \texttt{.ll} file
+      \end{itemize}
+      \vspace{4pt}
+      \begin{block}{\small Translation Path metric}
+        \scriptsize
+        \texttt{Deterministic} --- SSA parse only\\
+        \texttt{AI Agent} --- unknown dialect, full agent\\
+        \texttt{Det.\ + AI Repair} --- known dialect repaired\\
+        SSA parse + QIR generation is typically $<$~5~ms.
+      \end{block}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Session Logging}
+  \begin{columns}[T]
+    \column{0.52\textwidth}
+      Every successful translation is \textbf{automatically logged} to
+      \texttt{logs/translations.jsonl}:
+      \vspace{4pt}
+      \begin{lstlisting}[style=jsonlstyle]
+{
+  "timestamp": "2026-02-26T11:14:04.919",
+  "session_id": "a3f7c12b",
+  "dialect": "quake",
+  "translation_time_s": 0.003,
+  "circuit_info": {
+    "num_qubits": 2,
+    "num_gates": 2,
+    "gate_types": ["h", "cnot"]
+  },
+  "mlir_input": "module attributes ...",
+  "qir_output": "; ModuleID = '...' ..."
+}
+      \end{lstlisting}
+      \vspace{4pt}
+      Quick inspection:
+      \begin{lstlisting}[style=pystyle]
+import json
+for line in open("logs/translations.jsonl"):
+    r = json.loads(line)
+    print(r["session_id"], r["dialect"],
+          r["timestamp"])
+      \end{lstlisting}
+    \column{0.44\textwidth}
+      \textbf{Design decisions:}
+      \vspace{4pt}
+      \begin{itemize}\small
+        \item \textbf{JSONL format} --- one JSON object per line,
+              easy to append and stream
+        \item \textbf{Thread-safe} --- \texttt{threading.Lock}
+              ensures concurrent users don't corrupt the file
+        \item \textbf{Session ID} --- each browser tab gets a
+              random 8-char hex ID (new per session)
+        \item \textbf{Auto-created} --- \texttt{logs/} directory
+              is created on first translation
+        \item Full \texttt{mlir\_input} + \texttt{qir\_output}
+              stored for audit and debugging
+      \end{itemize}
+      \vspace{6pt}
+      \begin{block}{\small Multiple concurrent users}
+        Streamlit handles this natively ---
+        each browser tab has its own isolated
+        \texttt{session\_state}.
+        Start with \texttt{--server.address 0.0.0.0}
+        to share on the network.
+      \end{block}
   \end{columns}
 \end{frame}
 
 %% ============================================================
-\section{Project Structure \& Stack}
+\section{Examples \& Results}
 %% ============================================================
 
-\begin{frame}[fragile]{Project Structure}
+\begin{frame}[fragile]{Example: Bell State (Catalyst MLIR $\to$ QIR)}
   \begin{columns}[T]
     \column{0.48\textwidth}
-      \textbf{Source tree -- 9 packages, 33 modules}
-      \begin{lstlisting}[style=pystyle]
-src/
-  config/       # Settings, LLM model registry
-  dialects/     # BaseDialect, Catalyst,
-                # Quake, DialectDetector
-  parsers/      # MLIRParser
-  generators/   # QIRGenerator, QIRTemplates
-  agents/       # CrewManager,
-                # TranslationAgent,
-                # VerificationAgent
-  tools/        # RAGTool, GateCounterTool
-  rag/          # KnowledgeBase,
-                # DocumentFetcher, Chunker
-  verification/ # GateCounter, Metrics,
-                # SimulatorRegistry, QIRRunner
-  ui/           # Streamlit app.py
+      \textbf{Input (Catalyst MLIR):}
+      \begin{lstlisting}[style=mlirstyle]
+%0 = quantum.alloc( 2) : !quantum.reg
+%1 = quantum.extract %0[ 0]
+  --> ssa_qubit["%1"] = 0
+%out = quantum.custom "Hadamard"() %1
+  --> ssa_qubit["%out"] = 0
+%2 = quantum.extract %0[ 1]
+  --> ssa_qubit["%2"] = 1
+%out_0:2 = quantum.custom "CNOT"() %out, %2
+  --> ssa_qubit["%out_0#0"] = 0  (ctrl)
+  --> ssa_qubit["%out_0#1"] = 1  (tgt)
+%mres, %q = quantum.measure %out_0#0
+  --> physical qubit 0
       \end{lstlisting}
     \column{0.48\textwidth}
-      \textbf{Supporting directories}
+      \textbf{Output (QIR):}
+      \begin{lstlisting}[style=qirstyle]
+define void @main() #0 {
+entry:
+  call void @__quantum__rt__initialize(i8* null)
+  ; H on qubit 0
+  call void @__quantum__qis__h__body(
+    %Qubit* null)
+  ; CNOT(0,1)
+  call void @__quantum__qis__cnot__body(
+    %Qubit* null,
+    %Qubit* inttoptr (i64 1 to %Qubit*))
+  ; Measure both qubits
+  call void @__quantum__qis__mz__body(
+    %Qubit* null, %Result* null)
+  call void @__quantum__qis__mz__body(
+    %Qubit* inttoptr (i64 1 to %Qubit*),
+    %Result* inttoptr (i64 1 to %Result*))
+  ret void
+}
+      \end{lstlisting}
+      \vspace{2pt}
+      \hlg{Gate match:} H=1, CNOT=1 $=$ H=1, CNOT=1 \checkmark\\
+      \hlg{TVD:} 98.6\% $\ge$ 95\% \checkmark
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Example: GHZ-5 (Quake MLIR $\to$ QIR)}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Input (Quake MLIR --- CUDA Quantum):}
+      \begin{lstlisting}[style=quakestyle]
+%0 = quake.alloca !quake.veq<5>
+%c0 = arith.constant 0 : i64
+%1 = quake.extract_ref %0[%c0]
+  --> ref_qubit["%1"] = 0
+
+quake.h %1 : (!quake.ref) -> ()
+  --> H(qubit 0)
+
+quake.x [%2] %3 : (!quake.ref, ...) -> ()
+  --> CNOT(qubit 0, qubit 1)
+
+quake.x [%4] %5 : (!quake.ref, ...) -> ()
+  --> CNOT(qubit 0, qubit 2)
+
+quake.x [%6] %7 : (!quake.ref, ...) -> ()
+  --> CNOT(qubit 0, qubit 3)
+
+quake.x [%8] %9 : (!quake.ref, ...) -> ()
+  --> CNOT(qubit 0, qubit 4)
+      \end{lstlisting}
+    \column{0.48\textwidth}
+      \textbf{Output (QIR):}
+      \begin{lstlisting}[style=qirstyle]
+call void @__quantum__qis__h__body(
+  %Qubit* null)                 ; qubit 0
+
+call void @__quantum__qis__cnot__body(
+  %Qubit* null,
+  %Qubit* inttoptr(i64 1 to %Qubit*))  ; (0,1)
+
+call void @__quantum__qis__cnot__body(
+  %Qubit* null,
+  %Qubit* inttoptr(i64 2 to %Qubit*))  ; (0,2)
+
+call void @__quantum__qis__cnot__body(
+  %Qubit* null,
+  %Qubit* inttoptr(i64 3 to %Qubit*))  ; (0,3)
+
+call void @__quantum__qis__cnot__body(
+  %Qubit* null,
+  %Qubit* inttoptr(i64 4 to %Qubit*))  ; (0,4)
+      \end{lstlisting}
+      \vspace{2pt}
+      \hlg{Gate match:} H=1, CNOT=4 $=$ H=1, CNOT=4 \checkmark\\
+      \hlg{TVD:} 99\% $\ge$ 95\% \checkmark
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Example: Quantum Teleportation (Conditional)}
+  \begin{columns}[T]
+    \column{0.48\textwidth}
+      \textbf{Circuit:}
+      \vspace{4pt}
+      \begin{lstlisting}[style=mlirstyle]
+q0 --H--*-----------M(bit0)
+q1 -----X---*--H---M(bit1)
+q2 ---------X---[Z if bit0]
+                [X if bit1]
+      \end{lstlisting}
+      \vspace{6pt}
+      \textbf{Challenge:} the correction gates depend on
+      classical measurement results.
+      The parser must trace the condition through
+      \textbf{5 intermediate IR operations}:
+      \vspace{4pt}
+      \begin{center}
+      \begin{tikzpicture}[
+        node/.style={font=\tiny,draw,rounded corners=2pt,
+                     fill=codebg,text=white,inner sep=2pt,
+                     minimum height=0.3cm},
+        arr/.style={-Stealth,condred,thick},
+        scale=0.88,
+      ]
+        \node[node](m){\texttt{quantum.measure}};
+        \node[node,right=0.15cm of m](t){\texttt{tensor.from\_elements}};
+        \node[node,right=0.15cm of t](c){\texttt{stablehlo.compare}};
+        \node[node,below=0.2cm of c](e){\texttt{tensor.extract}};
+        \node[node,left=0.15cm of e](sc){\texttt{scf.if}};
+        \draw[arr](m)--(t); \draw[arr](t)--(c);
+        \draw[arr](c)--(e); \draw[arr](e)--(sc);
+      \end{tikzpicture}
+      \end{center}
+    \column{0.48\textwidth}
+      \textbf{Generated conditional QIR:}
+      \begin{lstlisting}[style=qirstyle]
+; Read measurement 1
+%c0 = call i1
+  @__quantum__qis__read_result__body(
+    %Result* inttoptr(i64 1 to %Result*))
+br i1 %c0, label %then0, label %else0
+
+then0:
+  call void @__quantum__qis__z__body(
+    %Qubit* inttoptr(i64 2 to %Qubit*))
+  br label %cont0
+else0:
+  br label %cont0
+cont0:
+
+; Read measurement 0
+%c1 = call i1
+  @__quantum__qis__read_result__body(
+    %Result* null)
+br i1 %c1, label %then1, label %else1
+
+then1:
+  call void @__quantum__qis__x__body(
+    %Qubit* inttoptr(i64 2 to %Qubit*))
+  br label %cont1
+      \end{lstlisting}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Verification Results --- All Tested Circuits}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      \textbf{Catalyst dialect circuits (1000 shots):}
+      \vspace{4pt}
+      \begin{tabular}{@{}llccc@{}}
+        \toprule
+        Circuit & Qubits & TVD & Status \\
+        \midrule
+        Bell State & 2 & 98.6\% & \hlg{\checkmark} \\
+        GHZ-3 & 3 & 98.0\% & \hlg{\checkmark} \\
+        Teleportation & 3 & 96.4\% & \hlg{\checkmark} \\
+        Random-658 & 2 & 96.2\% & \hlg{\checkmark} \\
+        \bottomrule
+      \end{tabular}
+      \vspace{8pt}
+      \textbf{Quake dialect circuits (1000 shots):}
+      \vspace{4pt}
+      \begin{tabular}{@{}llccc@{}}
+        \toprule
+        Circuit & Qubits & TVD & Status \\
+        \midrule
+        Bell State & 2 & $\ge$96\% & \hlg{\checkmark} \\
+        GHZ-5 & 5 & 99\% & \hlg{\checkmark} \\
+        Teleportation & 3 & $\ge$96\% & \hlg{\checkmark} \\
+        Random (5$\times$) & 2--4 & $\ge$96\% & \hlg{\checkmark} \\
+        \bottomrule
+      \end{tabular}
+    \column{0.46\textwidth}
+      \textbf{Gate count results --- all MATCH:}
+      \vspace{4pt}
+      \begin{tabular}{@{}lcc@{}}
+        \toprule
+        Circuit & MLIR gates & QIR gates \\
+        \midrule
+        Bell (Catalyst) & H,CNOT & H,CNOT \\
+        Bell (Quake) & H,CNOT & H,CNOT \\
+        GHZ-5 (Quake) & H,4xCNOT & H,4xCNOT \\
+        Teleportation & 2H,2CNOT,X,Z & 2H,2CNOT,X,Z \\
+        \bottomrule
+      \end{tabular}
+      \vspace{8pt}
+      \begin{exampleblock}{Pass threshold}
+        TVD $\ge$ 95\% is required.
+        \textit{Total Variation Distance} measures
+        how similar two probability distributions are.
+        100\% = identical, 95\% = within statistical
+        noise for 1000 shots.
+      \end{exampleblock}
+  \end{columns}
+\end{frame}
+
+%% ============================================================
+\section{Technology Stack \& Getting Started}
+%% ============================================================
+
+\begin{frame}{Technology Stack}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      \begin{tabular}{@{}lp{4.2cm}@{}}
+        \toprule
+        Layer & Technology \\
+        \midrule
+        Language & Python 3.12 \\[2pt]
+        \textbf{CLI} & \texttt{translate.py} --- file/stdin/JSON/pipe \\[2pt]
+        Web UI & Streamlit + Plotly \\[2pt]
+        \hl{Dialect 1} & PennyLane Catalyst 0.14\\
+                       & \texttt{quantum.*} parsing + \texttt{@qjit} exec \\[2pt]
+        \hlq{Dialect 2} & CUDA Quantum 0.13\\
+                        & Quake parsing + \texttt{cudaq.sample} exec \\[2pt]
+        QIR Exec & \texttt{qirrunner} 0.9.1 \\
+                 & (pre-built wheel, no LLVM) \\[2pt]
+        AI Agents & CrewAI \textbf{1.10.0} (upgraded from 0.28.8) \\[2pt]
+        LLM --- local & Ollama (GPU, private) \\[2pt]
+        LLM --- cloud & HuggingFace Inference API (\textbf{free})\\
+                      & \texttt{gpt-oss-20b} (20B, Apache 2.0) \\[2pt]
+        Web tools & \texttt{WebFetchTool} / \texttt{ScrapeWebsiteTool}\\
+                  & unknown-dialect spec research \\[2pt]
+        RAG / VDB & ChromaDB + SentenceTransformers \\[2pt]
+        Logging & JSONL file (\texttt{logs/translations.jsonl}) \\
+        \bottomrule
+      \end{tabular}
+    \column{0.46\textwidth}
+      \textbf{Project structure:}
+      \vspace{4pt}
+      \begin{small}
+      \begin{tabular}{@{}ll@{}}
+        \toprule
+        Path & Contents \\
+        \midrule
+        \texttt{translate.py} & \textbf{CLI entry point} \\
+        \texttt{src/dialects/} & Catalyst + Quake parsers \\
+        \texttt{src/parsers/} & MLIRParser (auto-detect) \\
+        \texttt{src/generators/} & QIR code generator \\
+        \texttt{src/verification/} & 4-level pipeline \\
+        \texttt{src/verification/pipeline.py} & shared \texttt{run\_verification\_pipeline()} \\
+        \texttt{src/agents/} & CrewAI agents (1.x API) \\
+        \texttt{src/tools/web\_fetch\_tool.py} & WebFetchTool + \texttt{get\_web\_tools()} \\
+        \texttt{src/config/llm\_config.py} & Multi-provider LLM config \\
+        \texttt{src/rag/} & ChromaDB + embeddings \\
+        \texttt{src/ui/} & Streamlit web app \\
+        \texttt{logs/} & Session audit log \\
+        \bottomrule
+      \end{tabular}
+      \end{small}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]{Getting Started}
+  \begin{columns}[T]
+    \column{0.50\textwidth}
+      \textbf{1. Install dependencies}
       \begin{lstlisting}[style=pystyle]
-scripts/
-  fetch_knowledge.py  # Download docs
-  initialize_db.py    # Populate ChromaDB
-  setup_llm.sh        # Ollama model pull
+pip install -r requirements.txt
+      \end{lstlisting}
 
-knowledge_base/
-  qir_specs/  mlir_docs/
-  examples/   research/  (arXiv PDFs)
+      \textbf{2. Set up Ollama (for AI path)}
+      \begin{lstlisting}[style=pystyle]
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull llama3.1:8b
+      \end{lstlisting}
 
-example/mlir/   # Ground-truth MLIR
-example/qir/    # Ground-truth QIR (.ll)
-data/chromadb/  # Persistent vector DB
-docs/diagrams/  # PlantUML (.puml) files
+      \textbf{3. Initialise knowledge base (for RAG)}
+      \begin{lstlisting}[style=pystyle]
+python scripts/fetch_knowledge.py
+python scripts/initialize_db.py
+      \end{lstlisting}
+
+      \textbf{4. Launch the web UI}
+      \begin{lstlisting}[style=pystyle]
+# Local only:
+streamlit run src/ui/app.py
+
+# Share on your network:
+streamlit run src/ui/app.py \
+  --server.address 0.0.0.0 \
+  --server.port 8501
+      \end{lstlisting}
+    \column{0.46\textwidth}
+      \textbf{5. Use the CLI (no UI needed)}
+      \begin{lstlisting}[style=pystyle]
+# Fast deterministic translate
+python translate.py examples/mlir/bell_state.mlir
+
+# With agentic pipeline (Ollama)
+python translate.py circuit.mlir --model llama3.1-8b
+
+# Free cloud model (no GPU)
+export HF_TOKEN=hf_...
+python translate.py circuit.mlir --model gpt-oss-20b
+
+# JSON output (for scripting / CI)
+python translate.py circuit.mlir --json \
+  | jq '.gate_comparison.matches'
       \end{lstlisting}
 
       \vspace{4pt}
-      \textbf{Quick start}
+      \textbf{6. Generate Quake MLIR from OpenQASM3}
       \begin{lstlisting}[style=pystyle]
-pip install -r requirements.txt
-ollama pull llama3.1:8b
-python scripts/fetch_knowledge.py
-python scripts/initialize_db.py
-streamlit run src/ui/app.py
+python example_quake/openqasm_to_quake_mlir.py
+# Saves .mlir to examples/quake_mlir/
       \end{lstlisting}
-  \end{columns}
-\end{frame}
 
-\begin{frame}{Technology Stack}
-  \begin{center}
-  \renewcommand{\arraystretch}{1.25}
-  \begin{tabular}{>{\bfseries\color{mlirblue}}p{2.8cm}
-                  >{\ttfamily}p{4.2cm}
-                  p{5.0cm}}
-    \toprule
-    Layer & Technology & Role \\
-    \midrule
-    Language      & Python 3.12
-                  & All modules; 33 files; 3\,700+ lines \\
-    LLM Backend   & Ollama (local)
-                  & Serves models via HTTP API \\
-    LLM Models    & llama3.1:8b / 70b-q4
-                  & Translation and verification agents \\
-    Agent Fw.     & CrewAI
-                  & Multi-agent orchestration loop \\
-    Vector DB     & ChromaDB (persistent)
-                  & RAG document store \\
-    Embeddings    & SentenceTransformers
-                  & all-MiniLM-L6-v2 (384-dim) \\
-    Web UI        & Streamlit
-                  & Interactive 50/50 split layout \\
-    Configuration & Pydantic + dotenv
-                  & Type-safe environment settings \\
-    Source IRs    & Catalyst MLIR, Quake MLIR
-                  & PennyLane, CUDA Quantum \\
-    Target IR     & QIR 1.0 (LLVM IR)
-                  & QIR Alliance specification \\
-    \bottomrule
-  \end{tabular}
-  \end{center}
-\end{frame}
-
-%% ============================================================
-\section{Validation \& Results}
-%% ============================================================
-
-\begin{frame}{Validation Results}
-  \begin{center}
-  \renewcommand{\arraystretch}{1.3}
-  \begin{tabular}{@{}lccccl@{}}
-    \toprule
-    \textbf{Circuit} & \textbf{Qubits} & \textbf{Gates}
-      & \textbf{Params} & \textbf{Cond.} & \textbf{Status} \\
-    \midrule
-    Bell State ($|\Phi^+\rangle$)
-      & 2 & H, CNOT & -- & -- & \hlg{\faCheckCircle\ Pass} \\
-    5-Qubit GHZ
-      & 5 & H, 4$\times$CNOT & -- & -- & \hlg{\faCheckCircle\ Pass} \\
-    Quantum Teleportation
-      & 3 & 2H, 2CNOT, Z, X & -- & 2 & \hlg{\faCheckCircle\ Pass} \\
-    Random Circuit 658
-      & 2 & CNOT, SWAP, H, S, RX, Y, CNOT & 2.59 & -- & \hlg{\faCheckCircle\ Pass} \\
-    Random Circuit 6994
-      & 2 & Various mixed gates & -- & -- & \hlg{\faCheckCircle\ Pass} \\
-    \bottomrule
-  \end{tabular}
-  \end{center}
-  \vspace{8pt}
-  \begin{columns}[T]
-    \column{0.50\textwidth}
-      \textbf{Correctness properties verified}
-      \begin{itemize}\small
-        \item[\hlg{\faCheck}] Gate types and counts match ground truth
-        \item[\hlg{\faCheck}] Qubit indices correctly resolved through SSA chains
-        \item[\hlg{\faCheck}] Rotation angles preserved in LLVM scientific notation
-        \item[\hlg{\faCheck}] Conditionals linked to correct measurement results
-        \item[\hlg{\faCheck}] Operation ordering matches source MLIR
-      \end{itemize}
-    \column{0.46\textwidth}
-      \textbf{Previous bugs (all fixed)}
-      \begin{itemize}\small
-        \item[\hlr{\faTimes}] Trailing-digit heuristic for qubit resolution
-        \item[\hlr{\faTimes}] Gates emitted before measurements (wrong order)
-        \item[\hlr{\faTimes}] \texttt{scf.if} blocks silently ignored
-        \item[\hlr{\faTimes}] \texttt{arith.constant} not tracked for gate parameters
-        \item[\hlr{\faTimes}] Missing \texttt{double} in RX/RY/RZ declarations
-      \end{itemize}
+      \vspace{4pt}
+      \begin{block}{No Ollama? No problem}
+        \small
+        SSA parse + QIR generation requires \textbf{no LLM}.
+        Use \texttt{gpt-oss-20b} (HF free tier) for agents
+        without a local GPU.
+      \end{block}
   \end{columns}
 \end{frame}
 
 %% ============================================================
-\section{Conclusion}
-%% ============================================================
-
-\begin{frame}{Summary}
-  \begin{columns}[T]
-    \column{0.50\textwidth}
-      \textbf{What was built}
-      \begin{itemize}
-        \item \hl{7-phase} LLM-powered quantum IR translator
-        \item \hl{SSA-aware single-pass parser:}
-              correctly resolves multi-result ops,
-              constant parameters, and measurement-conditional chains
-        \item \hl{Ordered operation emission}
-              preserves source semantics
-        \item \hl{Plugin dialect architecture}
-              for extensibility
-        \item \hl{RAG knowledge base}
-              with ChromaDB and SentenceTransformers
-        \item \hl{CrewAI multi-agent loop}
-              with 3-iteration refinement
-        \item \hl{4-level verification:}
-              gate count, QIR exec, MLIR exec, TVD/KL
-        \item \hl{Streamlit UI}
-              with 50/50 split layout
-      \end{itemize}
-    \column{0.46\textwidth}
-      \begin{alertblock}{Key technical insight}
-        MLIR's SSA form hides physical qubit indices behind
-        variable chains spanning multiple operations.
-        Only a \emph{single-pass dictionary-based tracker} correctly
-        resolves qubit indices, constant parameters, and
-        measurement-to-conditional linkages.
-      \end{alertblock}
-
-      \vspace{6pt}
-      \textbf{Supported gates summary}
-
-      \smallskip
-      \begin{tabular}{@{}ll@{}}
-        1-qubit & H, X, Y, Z, S, T, Sdg, Tdg \\
-        1q+param & RX, RY, RZ, PhaseShift \\
-        2-qubit & CNOT, CZ, SWAP, CY \\
-        3-qubit & Toffoli, CSWAP \\
-      \end{tabular}
-
-      \vspace{6pt}
-      \textbf{Statistics}
-
-      33 modules~\(\cdot\)~3\,700+ lines~\(\cdot\)~9 packages
-
-      2 dialect adapters~\(\cdot\)~17 supported gates
-  \end{columns}
-\end{frame}
-
 \begin{frame}[plain]
   \begin{center}
-    \vspace{1.8cm}
-    {\Large\bfseries\color{mlirblue}
-      LLM-Powered Multi-Agent MLIR $\to$ QIR Translator}
-    \vspace{0.5cm}
-
-    \rule{9cm}{0.4pt}
-    \vspace{0.4cm}
-
-    \badge{mlirblue}{SSA-Aware Parsing}\quad
-    \badge{qirgreen}{Ordered Operations}\quad
-    \badge{ssaorange}{Parametric Gates}
-
-    \vspace{6pt}
-    \badge{condred}{Conditional Branching}\quad
-    \badge{agentpurple}{Multi-Agent LLM}\quad
-    \badge{ragcyan}{RAG Knowledge}
-
-    \vspace{0.8cm}
-    \rule{9cm}{0.4pt}
-    \vspace{0.3cm}
-
-    {\small
-      33 modules \(\cdot\) 3\,700+ lines \(\cdot\) 9 packages
-      \(\cdot\) 17 supported gates}
-
-    \vspace{0.4cm}
-    {\small\color{gray}
-      Python 3.12 \(\cdot\) CrewAI \(\cdot\) ChromaDB
-      \(\cdot\) Ollama \(\cdot\) Streamlit}
+    \vspace{1.5cm}
+    {\LARGE\bfseries\color{mlirblue} MLIR $\to$ QIR Translator}\\[0.5cm]
+    {\large Summary}\\[0.8cm]
+    \begin{tabular}{@{}lp{7.5cm}@{}}
+      \toprule
+      \textbf{Input} & Catalyst MLIR, Quake MLIR, OpenQASM3 \\
+      \textbf{Output} & Standard QIR (.ll) --- any QIR-compatible simulator \\
+      \textbf{Translation paths} & Deterministic / AI Agent / Det.\ + AI Repair \\
+      \textbf{Verification} & Gate count match + $\ge$95\% TVD (real simulators) \\
+      \textbf{Web UI} & Streamlit, shareable, Translation Path metric, logging \\
+      \textbf{CLI} & \texttt{translate.py} --- file/stdin/\texttt{-{}-json}/\texttt{-{}-model}/\texttt{-o} \\
+      \textbf{LLM backends} & Ollama (local GPU) or HuggingFace API (free, no GPU)\\
+      \textbf{Free model} & \texttt{gpt-oss-20b} --- 20B, Apache 2.0, cloud inference \\
+      \textbf{AI Agents} & CrewAI 1.10 · RAG (ChromaDB) · WebFetchTool \\
+      \bottomrule
+    \end{tabular}
+    \vspace{0.6cm}
+    {\small Built with Python $\cdot$ CrewAI 1.10 $\cdot$ ChromaDB $\cdot$ Ollama $\cdot$ HuggingFace $\cdot$ Streamlit}\\[0.2cm]
+    {\small \texttt{qirrunner} $\cdot$ \texttt{pennylane-catalyst} $\cdot$ \texttt{cudaq} $\cdot$ \texttt{translate.py}}
   \end{center}
 \end{frame}
 

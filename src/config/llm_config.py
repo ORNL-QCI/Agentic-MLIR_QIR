@@ -1,7 +1,7 @@
 """LLM model configuration and management."""
 
 from typing import Dict, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -13,14 +13,28 @@ class ModelInfo:
     quality: str
     speed: str
     recommended_for: str
-    ollama_name: str
+    ollama_name: str                    # Ollama pull name (empty string for API models)
+    provider: str = "ollama"            # "ollama" | "openai" | "huggingface"
+    api_key_env: str = ""               # env var holding the API key (API models only)
+    free_tier: bool = False             # whether a free tier is available
+    litellm_model: str = ""             # litellm model string (defaults to ollama_name)
+
+    def get_litellm_model(self) -> str:
+        """Return the litellm model identifier used by crewai LLM."""
+        if self.litellm_model:
+            return self.litellm_model
+        if self.provider == "ollama":
+            return f"ollama/{self.ollama_name}"
+        if self.provider == "huggingface":
+            return f"huggingface/{self.ollama_name}"  # ollama_name holds the HF model ID
+        return self.ollama_name  # fallback
 
 
 class LLMConfig:
     """Configuration for available LLM models."""
 
     MODELS: Dict[str, ModelInfo] = {
-        # Production model
+        # ── Local Ollama models ───────────────────────────────────────────────
         'llama3.1-70b-q4': ModelInfo(
             size='70B',
             quantization='4-bit',
@@ -28,10 +42,9 @@ class LLMConfig:
             quality='excellent',
             speed='medium',
             recommended_for='production',
-            ollama_name='llama3.1:70b-instruct-q4_K_M'
+            ollama_name='llama3.1:70b-instruct-q4_K_M',
+            provider='ollama',
         ),
-
-        # Development models
         'llama3.1-8b': ModelInfo(
             size='8B',
             quantization='none',
@@ -39,9 +52,9 @@ class LLMConfig:
             quality='good',
             speed='fast',
             recommended_for='development, testing',
-            ollama_name='llama3.1:8b-instruct'
+            ollama_name='llama3.1:8b-instruct',
+            provider='ollama',
         ),
-
         'codellama-13b': ModelInfo(
             size='13B',
             quantization='none',
@@ -49,9 +62,9 @@ class LLMConfig:
             quality='very good',
             speed='medium',
             recommended_for='code-heavy tasks',
-            ollama_name='codellama:13b'
+            ollama_name='codellama:13b',
+            provider='ollama',
         ),
-
         'codellama-34b-q4': ModelInfo(
             size='34B',
             quantization='4-bit',
@@ -59,34 +72,59 @@ class LLMConfig:
             quality='excellent',
             speed='medium-slow',
             recommended_for='complex code translation',
-            ollama_name='codellama:34b-instruct-q4_K_M'
+            ollama_name='codellama:34b-instruct-q4_K_M',
+            provider='ollama',
+        ),
+
+        # ── HuggingFace Inference API (free HF token, no local GPU needed) ───
+        # Get a free token at: https://huggingface.co/settings/tokens
+        # export HF_TOKEN=hf_...
+        'gpt-oss-20b': ModelInfo(
+            size='20B',
+            quantization='none',
+            vram='cloud',
+            quality='very good',
+            speed='fast',
+            recommended_for='translation, verification (open-weight, Apache 2.0, free HF token)',
+            ollama_name='openai/gpt-oss-20b',   # HF model ID stored in ollama_name field
+            provider='huggingface',
+            api_key_env='HF_TOKEN',
+            free_tier=True,
         ),
     }
 
     @classmethod
     def get_model_info(cls, model_key: str) -> Optional[ModelInfo]:
-        """Get information about a specific model."""
         return cls.MODELS.get(model_key)
 
     @classmethod
     def get_ollama_model_name(cls, model_key: str) -> str:
-        """Convert model key to Ollama pull name."""
+        """Return Ollama pull name (for Ollama models only)."""
+        model_info = cls.MODELS.get(model_key)
+        if model_info and model_info.provider == "ollama":
+            return model_info.ollama_name
+        return model_key
+
+    @classmethod
+    def get_litellm_model(cls, model_key: str) -> str:
+        """Return the litellm model string used by crewai LLM."""
         model_info = cls.MODELS.get(model_key)
         if model_info:
-            return model_info.ollama_name
-        return model_key  # Return as-is if not found
+            return model_info.get_litellm_model()
+        return model_key
+
+    @classmethod
+    def is_ollama_model(cls, model_key: str) -> bool:
+        info = cls.MODELS.get(model_key)
+        return info is None or info.provider == "ollama"
 
     @classmethod
     def estimate_vram(cls, model_key: str) -> str:
-        """Estimate VRAM requirement for a model."""
         model_info = cls.MODELS.get(model_key)
-        if model_info:
-            return model_info.vram
-        return "Unknown"
+        return model_info.vram if model_info else "Unknown"
 
     @classmethod
     def get_recommended_models(cls, purpose: str = 'development') -> list[str]:
-        """Get recommended models for a specific purpose."""
         return [
             key for key, info in cls.MODELS.items()
             if purpose.lower() in info.recommended_for.lower()
@@ -94,5 +132,4 @@ class LLMConfig:
 
     @classmethod
     def list_all_models(cls) -> Dict[str, ModelInfo]:
-        """List all available models with their information."""
         return cls.MODELS

@@ -9,9 +9,16 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / 'src'))
 
+import json
 import logging
 import os
+import threading
+import time
+import uuid
 from datetime import datetime
+
+import pandas as pd
+import plotly.express as px
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -55,21 +62,51 @@ def initialize_session_state():
         st.session_state.mlir_input = ""
     if 'selected_model' not in st.session_state:
         st.session_state.selected_model = "llama3.1:8b"
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = uuid.uuid4().hex[:8]
+
+
+_log_lock = threading.Lock()
+_LOG_FILE = project_root / "logs" / "translations.jsonl"
+
+
+def _log_translation(session_id: str, mlir_input: str, result: dict) -> None:
+    """Append one translation record to logs/translations.jsonl (thread-safe)."""
+    record = {
+        "timestamp": datetime.now().isoformat(),
+        "session_id": session_id,
+        "dialect": result.get("dialect", "unknown"),
+        "translation_time_s": result.get("translation_time_s", 0),
+        "translation_path": result.get("translation_path", "deterministic"),
+        "iterations": result.get("iterations", 1),
+        "circuit_info": result.get("circuit_info", {}),
+        "mlir_input": mlir_input,
+        "qir_output": result.get("qir_code", ""),
+    }
+    _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with _log_lock:
+        with _LOG_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
 
 
 def load_examples():
-    """Load example MLIR circuits."""
+    """Load example MLIR circuits (Catalyst + Quake dialects)."""
     examples = {}
-    examples_dir = Path("examples/mlir")
 
-    if examples_dir.exists():
-        for file_path in examples_dir.glob("*.mlir"):
-            try:
-                with open(file_path, 'r') as f:
-                    name = file_path.stem.replace('code_', '').replace('_', ' ').title()
-                    examples[name] = f.read()
-            except Exception as e:
-                logger.error(f"Error loading {file_path}: {e}")
+    for file_path in sorted(Path("examples/mlir").glob("*.mlir")):
+        try:
+            name = "[Catalyst] " + file_path.stem.replace("_", " ").title()
+            examples[name] = file_path.read_text()
+        except Exception as e:
+            logger.error(f"Error loading {file_path}: {e}")
+
+    for file_path in sorted(Path("examples/quake_mlir").glob("*.mlir")):
+        try:
+            stem = file_path.stem.replace("code_", "").replace("_", " ").title()
+            name = f"[Quake] {stem}"
+            examples[name] = file_path.read_text()
+        except Exception as e:
+            logger.error(f"Error loading {file_path}: {e}")
 
     return examples
 
@@ -78,62 +115,273 @@ def render_sidebar():
     """Render sidebar with configuration."""
     st.sidebar.title("⚙️ Configuration")
 
-    # Model selection
     st.sidebar.subheader("LLM Model")
 
     from src.config.llm_config import LLMConfig
 
     model_options = list(LLMConfig.MODELS.keys())
-    model_labels = [
-        f"{key} ({LLMConfig.MODELS[key].size}, {LLMConfig.MODELS[key].speed})"
-        for key in model_options
-    ]
 
-    selected_idx = model_options.index(st.session_state.selected_model) if st.session_state.selected_model in model_options else 0
+    def _model_label(key: str) -> str:
+        info = LLMConfig.MODELS[key]
+        provider_tag = "☁️ API" if info.provider != "ollama" else "💻 Local"
+        free_tag = " (free)" if info.free_tier else ""
+        return f"{provider_tag} {key} — {info.size}, {info.speed}{free_tag}"
+
+    selected_idx = (
+        model_options.index(st.session_state.selected_model)
+        if st.session_state.selected_model in model_options
+        else 0
+    )
 
     selected_model = st.sidebar.selectbox(
         "Select Model",
         options=model_options,
-        format_func=lambda x: model_labels[model_options.index(x)],
-        index=selected_idx
+        format_func=_model_label,
+        index=selected_idx,
     )
-
     st.session_state.selected_model = selected_model
 
-    # Model info
     model_info = LLMConfig.MODELS[selected_model]
-    st.sidebar.info(f"""
-    **VRAM Required:** {model_info.vram}
-    **Quality:** {model_info.quality}
-    **Speed:** {model_info.speed}
-    **Use Case:** {model_info.recommended_for}
-    """)
 
-    # Example loader
+    if model_info.provider == "ollama":
+        st.sidebar.info(f"""
+**Backend:** Ollama (local)
+**VRAM Required:** {model_info.vram}
+**Quality:** {model_info.quality}
+**Speed:** {model_info.speed}
+**Use Case:** {model_info.recommended_for}
+        """)
+    elif model_info.provider == "huggingface":
+        import os
+        hf_token_set = bool(os.environ.get(model_info.api_key_env))
+        token_status = "✅ HF_TOKEN found" if hf_token_set else "⚠️ Set `HF_TOKEN` env var (free at huggingface.co/settings/tokens)"
+        st.sidebar.info(f"""
+**Backend:** HuggingFace Inference API (free tier)
+**Model:** {model_info.ollama_name}
+**Quality:** {model_info.quality}
+**Speed:** {model_info.speed}
+**Use Case:** {model_info.recommended_for}
+**Token:** {token_status}
+        """)
+    else:
+        import os
+        api_key_set = bool(os.environ.get(model_info.api_key_env))
+        key_status = "✅ API key found" if api_key_set else f"⚠️ Set `{model_info.api_key_env}` env var"
+        free_note = "Free tier available" if model_info.free_tier else "Paid API"
+        st.sidebar.info(f"""
+**Backend:** {model_info.provider.upper()} API ({free_note})
+**Quality:** {model_info.quality}
+**Speed:** {model_info.speed}
+**Use Case:** {model_info.recommended_for}
+**API Key:** {key_status}
+        """)
+
     st.sidebar.subheader("📚 Load Example")
-
     examples = load_examples()
     example_names = ["None"] + list(examples.keys())
-
     selected_example = st.sidebar.selectbox("Choose Example Circuit", example_names)
-
     if selected_example != "None" and selected_example in examples:
         if st.sidebar.button("Load Example"):
             st.session_state.mlir_input = examples[selected_example]
             st.rerun()
 
-    # Settings
     st.sidebar.subheader("🔧 Settings")
-
     max_iterations = st.sidebar.slider("Max Iterations", 1, 5, 3)
     verbose = st.sidebar.checkbox("Verbose Output", value=True)
 
     return {
         'model': selected_model,
         'max_iterations': max_iterations,
-        'verbose': verbose
+        'verbose': verbose,
     }
 
+
+# ------------------------------------------------------------------ #
+#  Translation helpers                                                #
+# ------------------------------------------------------------------ #
+
+def _extract_circuit_info(mlir_code: str, qir_code: str) -> dict:
+    """Best-effort circuit info from MLIR (or QIR fallback)."""
+    try:
+        from src.parsers.mlir_parser import MLIRParser
+        from src.dialects.base_dialect import UnsupportedDialectError
+        circuit = MLIRParser().parse(mlir_code)
+        return {
+            'num_qubits': circuit.num_qubits,
+            'num_gates': len(circuit.gates),
+            'gate_types': [g.name for g in circuit.gates],
+        }
+    except Exception:
+        pass
+    # Fallback: count qubits from QIR qubit pointer patterns
+    import re
+    qubits = set(re.findall(r'inttoptr\s*\(\s*i64\s+(\d+)', qir_code or ""))
+    qubits.add("0")
+    gates = re.findall(r'@__quantum__qis__(\w+)__body', qir_code or "")
+    return {
+        'num_qubits': len(qubits),
+        'num_gates': len(gates),
+        'gate_types': gates,
+    }
+
+
+def _run_deterministic_translation(
+    mlir_input: str,
+    detected_dialect: str,
+    t0: float,
+) -> None:
+    """Fast deterministic-only path. Stores result in session_state."""
+    from src.parsers.mlir_parser import MLIRParser
+    from src.generators.qir_generator import QIRGenerator
+
+    parser = MLIRParser()
+    circuit = parser.parse(mlir_input)
+    generator = QIRGenerator()
+    qir_code = generator.generate(circuit, module_id="translated-circuit")
+    elapsed = time.time() - t0
+
+    st.session_state.translation_result = {
+        'qir_code': qir_code,
+        'dialect': detected_dialect,
+        'circuit_info': {
+            'num_qubits': circuit.num_qubits,
+            'num_gates': len(circuit.gates),
+            'gate_types': [g.name for g in circuit.gates],
+        },
+        'timestamp': datetime.now().isoformat(),
+        'translation_time_s': elapsed,
+        'iterations': 1,
+        'translation_path': 'deterministic',
+        'verification_result': None,
+        'verification_ran': False,
+    }
+    _log_translation(
+        st.session_state.session_id,
+        mlir_input,
+        st.session_state.translation_result,
+    )
+    st.success(f"✓ Translation complete! Detected dialect: {detected_dialect}")
+
+
+def _run_agentic_pipeline(
+    mlir_input: str,
+    detected_dialect,
+    config: dict,
+    t0: float,
+) -> None:
+    """Agentic pipeline: deterministic first pass + verification + agent repair/translation.
+
+    Falls back to deterministic-only when Ollama is unavailable.
+    Stores result in session_state.
+    """
+    from src.config.settings import settings
+    from src.config.llm_config import LLMConfig
+    from crewai.llm import LLM
+
+    model_key = config['model']
+    model_info = LLMConfig.get_model_info(model_key)
+
+    try:
+        if model_info and model_info.provider == "huggingface":
+            # ── HuggingFace Inference API ─────────────────────────────────────
+            import os
+            hf_token = os.environ.get(model_info.api_key_env, "")
+            if not hf_token:
+                st.error(
+                    "HF_TOKEN not set. Get a free token at "
+                    "https://huggingface.co/settings/tokens then run: "
+                    "`export HF_TOKEN=hf_...` and restart the app."
+                )
+                return
+            llm = LLM(
+                model=model_info.get_litellm_model(),   # "huggingface/openai/gpt-oss-20b"
+                api_key=hf_token,
+                temperature=settings.LLM_TEMPERATURE,
+            )
+        elif model_info and model_info.provider == "openai":
+            # ── OpenAI API model ──────────────────────────────────────────────
+            import os
+            api_key = os.environ.get(model_info.api_key_env, "")
+            if not api_key:
+                st.error(
+                    f"API key not set. Please export `{model_info.api_key_env}` "
+                    "in your environment and restart the app."
+                )
+                return
+            llm = LLM(
+                model=model_info.get_litellm_model(),
+                api_key=api_key,
+                temperature=settings.LLM_TEMPERATURE,
+            )
+        else:
+            # ── Ollama local model ────────────────────────────────────────────
+            import ollama as _ollama
+            _ollama.list()   # raises if server is down
+            llm = LLM(
+                model=LLMConfig.get_litellm_model(model_key),
+                base_url=settings.LLM_BASE_URL,
+                temperature=settings.LLM_TEMPERATURE,
+            )
+    except Exception as e:
+        st.warning(f"LLM unavailable ({e}). Falling back to deterministic translation.")
+        if detected_dialect is not None:
+            _run_deterministic_translation(mlir_input, detected_dialect, t0)
+        else:
+            st.error(
+                "Cannot translate: dialect is unrecognized and LLM is unavailable. "
+                "Please ensure Ollama is running (`ollama serve`) or set the API key."
+            )
+        return
+
+    from src.agents.crew_manager import CrewManager
+
+    manager = CrewManager(
+        llm=llm,
+        max_iterations=config['max_iterations'],
+        verbose=config['verbose'],
+    )
+
+    result = manager.translate_with_verification(mlir_input, shots=1000)
+    elapsed = time.time() - t0
+
+    circuit_info = _extract_circuit_info(mlir_input, result.qir_code or "")
+
+    st.session_state.translation_result = {
+        'qir_code': result.qir_code or "",
+        'dialect': result.dialect or detected_dialect or "unknown",
+        'circuit_info': circuit_info,
+        'timestamp': datetime.now().isoformat(),
+        'translation_time_s': elapsed,
+        'iterations': result.iterations,
+        'translation_path': result.translation_path,
+        'verification_result': result.verification_result,
+        'verification_ran': result.verification_result is not None,
+    }
+    _log_translation(
+        st.session_state.session_id,
+        mlir_input,
+        st.session_state.translation_result,
+    )
+
+    if result.success:
+        st.success(
+            f"✓ Translation verified! "
+            f"Dialect: {result.dialect or 'unknown'} | "
+            f"Path: {result.translation_path} | "
+            f"Iterations: {result.iterations}"
+        )
+    else:
+        st.warning(
+            f"Translation complete but verification did not fully pass. "
+            f"Path: {result.translation_path} | Iterations: {result.iterations}"
+        )
+        if result.error_message:
+            st.info(result.error_message)
+
+
+# ------------------------------------------------------------------ #
+#  Render: translation section                                        #
+# ------------------------------------------------------------------ #
 
 def render_translation_section(config):
     """Render translation input and execution."""
@@ -149,16 +397,15 @@ def render_translation_section(config):
             "Paste MLIR circuit here (Catalyst, Quake, or other dialect)",
             value=st.session_state.mlir_input,
             height=600,
-            key="mlir_text_area"
+            key="mlir_text_area",
         )
-
         st.session_state.mlir_input = mlir_input
 
         col_a, col_b = st.columns([1, 1])
-
         with col_a:
-            translate_btn = st.button("🚀 Translate to QIR", type="primary", use_container_width=True)
-
+            translate_btn = st.button(
+                "🚀 Translate to QIR", type="primary", use_container_width=True
+            )
         with col_b:
             clear_btn = st.button("🗑️ Clear", use_container_width=True)
 
@@ -171,32 +418,24 @@ def render_translation_section(config):
     if translate_btn and mlir_input.strip():
         with st.spinner("Translating... This may take a minute."):
             try:
-                # Import here to avoid early initialization
                 from src.parsers.mlir_parser import MLIRParser
-                from src.generators.qir_generator import QIRGenerator
+                from src.dialects.base_dialect import UnsupportedDialectError
 
-                # Parse MLIR with auto-detect
-                parser = MLIRParser()
-                circuit = parser.parse(mlir_input)
-                detected_dialect = parser.get_detected_dialect(mlir_input)
+                t0 = time.time()
 
-                # Generate QIR
-                generator = QIRGenerator()
-                qir_code = generator.generate(circuit, module_id="translated-circuit")
+                # Detect dialect
+                try:
+                    detected_dialect = MLIRParser().get_detected_dialect(mlir_input)
+                    dialect_is_known = True
+                except UnsupportedDialectError:
+                    detected_dialect = None
+                    dialect_is_known = False
 
-                # Store result
-                st.session_state.translation_result = {
-                    'qir_code': qir_code,
-                    'dialect': detected_dialect,
-                    'circuit_info': {
-                        'num_qubits': circuit.num_qubits,
-                        'num_gates': len(circuit.gates),
-                        'gate_types': [g.name for g in circuit.gates]
-                    },
-                    'timestamp': datetime.now().isoformat()
-                }
-
-                st.success(f"✓ Translation complete! Detected dialect: {detected_dialect}")
+                # Routing: fast deterministic path vs full agentic pipeline
+                if dialect_is_known and config['max_iterations'] == 1:
+                    _run_deterministic_translation(mlir_input, detected_dialect, t0)
+                else:
+                    _run_agentic_pipeline(mlir_input, detected_dialect, config, t0)
 
             except Exception as e:
                 st.error(f"Translation error: {str(e)}")
@@ -213,61 +452,211 @@ def render_translation_section(config):
 
             st.code(qir_code, language='llvm', line_numbers=True)
 
-            # Download button
             st.download_button(
                 label="⬇️ Download QIR",
                 data=qir_code,
                 file_name=f"circuit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ll",
-                mime="text/plain"
+                mime="text/plain",
             )
+
+            # Metrics row: Translation Time | Iterations | Translation Path
+            t_col1, t_col2, t_col3 = st.columns(3)
+            with t_col1:
+                elapsed = st.session_state.translation_result.get('translation_time_s', 0)
+                time_str = f"{elapsed * 1000:.1f}ms" if elapsed < 1.0 else f"{elapsed:.2f}s"
+                st.metric("Translation Time", time_str)
+            with t_col2:
+                iters = st.session_state.translation_result.get('iterations', 1)
+                st.metric("Iterations", iters)
+            with t_col3:
+                path = st.session_state.translation_result.get('translation_path', 'deterministic')
+                path_label = {
+                    'deterministic': 'Deterministic',
+                    'ai_agent': 'AI Agent',
+                    'deterministic+repair': 'Det. + AI Repair',
+                }.get(path, path)
+                st.metric("Translation Path", path_label)
 
         else:
             st.info("Translation output will appear here")
 
 
+# ------------------------------------------------------------------ #
+#  Render: verification section                                       #
+# ------------------------------------------------------------------ #
+
+def _render_verification_data(vr: dict) -> None:
+    """Render the full verification result dict into Streamlit widgets."""
+    if not vr.get('success'):
+        st.error(f"Verification pipeline error: {vr.get('error', 'unknown error')}")
+        return
+
+    overall_pass = vr['similarity_passes'] and vr['gate_comparison'].get('matches', False)
+    if overall_pass:
+        st.success("PASS — Gate counts match and distributions are similar (TVD similarity >= 95%)")
+    else:
+        st.warning("PARTIAL — See details below for mismatches")
+
+    qir_label = "simulated (mock)" if vr['qir_is_mock'] else "real execution"
+    cat_label = "simulated (mock)" if vr['catalyst_is_mock'] else "real execution"
+    mlir_runner_label = vr.get('mlir_runner_label', 'MLIR runner')
+    st.caption(
+        f"QIR backend: {qir_label}  |  MLIR backend ({mlir_runner_label}): {cat_label}"
+    )
+
+    sim_pct = vr['similarity'] * 100
+    delta_label = "PASS" if vr['similarity_passes'] else "FAIL"
+    st.metric(
+        label="Distribution Similarity (TVD-based)",
+        value=f"{sim_pct:.1f}%",
+        delta=delta_label,
+        delta_color="normal" if vr['similarity_passes'] else "inverse",
+    )
+
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        st.markdown("**QIR Execution Results**")
+        if vr['qir_distribution']:
+            rows = sorted(vr['qir_distribution'].items())
+            df_qir = pd.DataFrame({'Outcome': [r[0] for r in rows], 'Count': [r[1] for r in rows]})
+            fig_qir = px.bar(
+                df_qir, x='Outcome', y='Count',
+                title=f"QIR Distribution ({qir_label})",
+                color_discrete_sequence=['#1f77b4'],
+                text='Count',
+            )
+            fig_qir.update_traces(textposition='outside')
+            qir_max = max(vr['qir_distribution'].values(), default=1)
+            fig_qir.update_layout(
+                xaxis_title="Measurement Outcome",
+                xaxis_type='category',
+                yaxis_title="Count (shots=1000)",
+                yaxis_range=[0, qir_max * 1.25],
+                showlegend=False,
+                height=380,
+                margin=dict(t=50, b=40),
+            )
+            st.plotly_chart(fig_qir, use_container_width=True)
+        else:
+            st.info("No QIR distribution data")
+
+    with chart_col2:
+        st.markdown(f"**{mlir_runner_label} Execution Results**")
+        if vr['catalyst_distribution']:
+            rows = sorted(vr['catalyst_distribution'].items())
+            df_cat = pd.DataFrame({'Outcome': [r[0] for r in rows], 'Count': [r[1] for r in rows]})
+            fig_cat = px.bar(
+                df_cat, x='Outcome', y='Count',
+                title=f"{mlir_runner_label} ({cat_label})",
+                color_discrete_sequence=['#ff7f0e'],
+                text='Count',
+            )
+            fig_cat.update_traces(textposition='outside')
+            cat_max = max(vr['catalyst_distribution'].values(), default=1)
+            fig_cat.update_layout(
+                xaxis_title="Measurement Outcome",
+                xaxis_type='category',
+                yaxis_title="Count (shots=1000)",
+                yaxis_range=[0, cat_max * 1.25],
+                showlegend=False,
+                height=380,
+                margin=dict(t=50, b=40),
+            )
+            st.plotly_chart(fig_cat, use_container_width=True)
+        else:
+            st.info("No MLIR distribution data")
+
+    st.markdown("**Gate Count Comparison**")
+    gate_comp = vr['gate_comparison']
+    gate_match_label = "MATCH" if gate_comp.get('matches') else "MISMATCH"
+    gc_col1, gc_col2, gc_col3 = st.columns(3)
+    with gc_col1:
+        st.metric("MLIR Total Gates", gate_comp.get('mlir_total', 0))
+    with gc_col2:
+        st.metric("QIR Total Gates", gate_comp.get('qir_total', 0))
+    with gc_col3:
+        st.metric("Gate Match", gate_match_label)
+
+    all_gate_names = sorted(
+        set(gate_comp.get('mlir_gates', {}).keys()) |
+        set(gate_comp.get('qir_gates', {}).keys())
+    )
+    if all_gate_names:
+        table_data = []
+        for g in all_gate_names:
+            mlir_cnt = gate_comp.get('mlir_gates', {}).get(g, 0)
+            qir_cnt = gate_comp.get('qir_gates', {}).get(g, 0)
+            table_data.append({
+                'Gate': g,
+                'MLIR Count': mlir_cnt,
+                'QIR Count': qir_cnt,
+                'Status': 'MATCH' if mlir_cnt == qir_cnt else 'MISMATCH',
+            })
+        st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+
+    discrepancies = gate_comp.get('discrepancies', [])
+    if discrepancies:
+        st.markdown(f"**Gate Discrepancies ({len(discrepancies)})**")
+        for d in discrepancies:
+            st.warning(
+                f"Gate '{d['gate']}': "
+                f"MLIR={d['mlir_count']}, QIR={d['qir_count']}, "
+                f"diff={d['difference']:+d}"
+            )
+
+
 def render_verification_section():
-    """Render verification results."""
-    if st.session_state.translation_result:
-        st.subheader("✅ Circuit Analysis")
+    """Render circuit analysis and verification results."""
+    if not st.session_state.translation_result:
+        return
 
-        info = st.session_state.translation_result['circuit_info']
+    result = st.session_state.translation_result
+    info = result['circuit_info']
 
-        col1, col2, col3 = st.columns(3)
+    # ---- Circuit Analysis ----
+    st.subheader("✅ Circuit Analysis")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Qubits", info['num_qubits'])
+    with col2:
+        st.metric("Gates", info['num_gates'])
+    with col3:
+        st.metric("Unique Gates", len(set(info['gate_types'])))
 
-        with col1:
-            st.metric("Qubits", info['num_qubits'])
+    with st.expander("🔍 Gate Sequence"):
+        for i, gate in enumerate(info['gate_types'], 1):
+            st.text(f"{i}. {gate}")
 
-        with col2:
-            st.metric("Gates", info['num_gates'])
-
-        with col3:
-            unique_gates = len(set(info['gate_types']))
-            st.metric("Unique Gates", unique_gates)
-
-        # Gate sequence
-        with st.expander("🔍 Gate Sequence"):
-            for i, gate in enumerate(info['gate_types'], 1):
-                st.text(f"{i}. {gate}")
+    # ---- Verification Results ----
+    with st.expander("🔬 Verification Results", expanded=True):
+        if result.get('verification_ran') and result.get('verification_result'):
+            # Pre-computed during agentic pipeline — just display
+            _render_verification_data(result['verification_result'])
+        else:
+            # On-demand for fast deterministic path (max_iterations=1, known dialect)
+            mlir_code = st.session_state.mlir_input
+            qir_code = result['qir_code']
+            with st.spinner("Running simulation verification..."):
+                from src.verification.pipeline import run_verification_pipeline
+                vr = run_verification_pipeline(mlir_code, qir_code, shots=1000)
+            _render_verification_data(vr)
 
 
 def render_footer():
     """Render footer with information."""
     st.markdown("---")
-
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.markdown("**🎯 Features:**")
         st.markdown("- Multi-dialect support")
         st.markdown("- RAG-enhanced translation")
         st.markdown("- Real-time verification")
-
     with col2:
         st.markdown("**📚 Supported Dialects:**")
         st.markdown("- PennyLane Catalyst")
         st.markdown("- NVIDIA CUDA Quantum")
-        st.markdown("- Extensible framework")
-
+        st.markdown("- Unknown dialects (AI Agent)")
     with col3:
         st.markdown("**🔗 Links:**")
         st.markdown("[QIR Specification](https://github.com/qir-alliance/qir-spec)")
@@ -277,17 +666,9 @@ def render_footer():
 def main():
     """Main application entry point."""
     initialize_session_state()
-
-    # Render sidebar
     config = render_sidebar()
-
-    # Main content
     render_translation_section(config)
-
-    # Verification
     render_verification_section()
-
-    # Footer
     render_footer()
 
 

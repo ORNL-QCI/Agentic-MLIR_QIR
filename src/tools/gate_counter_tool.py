@@ -1,6 +1,6 @@
 """Gate counter tool for CrewAI agents."""
 
-from crewai_tools import BaseTool
+from crewai.tools import BaseTool
 import logging
 
 logger = logging.getLogger(__name__)

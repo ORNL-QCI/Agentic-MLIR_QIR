@@ -1,7 +1,7 @@
 """RAG tool for retrieving knowledge base context."""
 
-from typing import Optional
-from crewai_tools import BaseTool
+from typing import Any, Optional
+from crewai.tools import BaseTool
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,15 +23,10 @@ class RAGTool(BaseTool):
     - "Examples of conditional operations in QIR"
     - "MLIR Catalyst dialect gate syntax"
     """
+    knowledge_base: Optional[Any] = None
 
     def __init__(self, knowledge_base=None, **kwargs):
-        """Initialize RAG tool.
-
-        Args:
-            knowledge_base: KnowledgeBase instance
-        """
-        super().__init__(**kwargs)
-        self.knowledge_base = knowledge_base
+        super().__init__(knowledge_base=knowledge_base, **kwargs)
 
         # Lazy load if not provided
         if self.knowledge_base is None:

@@ -18,6 +18,7 @@ class GateCounter:
 
     # Gate name mappings (MLIR -> QIR)
     GATE_MAPPINGS = {
+        # Catalyst dialect names (PascalCase)
         'Hadamard': 'h',
         'CNOT': 'cnot',
         'PauliX': 'x',
@@ -30,10 +31,16 @@ class GateCounter:
         'RZ': 'rz',
         'CZ': 'cz',
         'SWAP': 'swap',
+        # Quake dialect adjoint gates → QIR adjoint names
+        'sdg': 's_adj',
+        'tdg': 't_adj',
     }
 
     def count_mlir_gates(self, mlir_code: str) -> Dict[str, int]:
         """Count gates in MLIR code.
+
+        Supports both Catalyst dialect (quantum.custom "GateName") and
+        Quake dialect (quake.h, quake.x [ctrl] tgt, etc.).
 
         Args:
             mlir_code: MLIR source code
@@ -43,9 +50,43 @@ class GateCounter:
         """
         counts = {}
 
-        # Find all quantum.custom gates
-        matches = re.findall(self.MLIR_GATE_PATTERN, mlir_code)
+        # Quake dialect: detect by presence of quake.* ops
+        if any(m in mlir_code for m in ("quake.alloca", "!quake.veq", "!quake.ref")):
+            # Single-qubit gates (not controlled)
+            for gate in ('h', 'y', 'z', 's', 't', 'sdg', 'tdg'):
+                n = len(re.findall(rf'quake\.{gate}\s+%', mlir_code))
+                if n:
+                    counts[gate] = n
 
+            # X gate: distinguish controlled (CNOT) from plain X
+            n_cnot = len(re.findall(r'quake\.x\s+\[', mlir_code))
+            n_x = len(re.findall(r'quake\.x\s+%', mlir_code))
+            if n_cnot:
+                counts['cnot'] = n_cnot
+            if n_x:
+                counts['x'] = n_x
+
+            # Two-qubit non-controlled gates
+            for gate in ('swap', 'cz'):
+                n = len(re.findall(rf'quake\.{gate}\s+%', mlir_code))
+                if n:
+                    counts[gate] = n
+
+            # Parametric gates
+            for gate in ('rx', 'ry', 'rz', 'r1'):
+                n = len(re.findall(rf'quake\.{gate}\s*\(', mlir_code))
+                if n:
+                    counts[gate] = n
+
+            # Measurements
+            n_meas = len(re.findall(r'quake\.mz\s+%', mlir_code))
+            if n_meas:
+                counts['measure'] = n_meas
+
+            return counts
+
+        # Catalyst dialect: quantum.custom "GateName"
+        matches = re.findall(self.MLIR_GATE_PATTERN, mlir_code)
         for gate_name in matches:
             counts[gate_name] = counts.get(gate_name, 0) + 1
 
