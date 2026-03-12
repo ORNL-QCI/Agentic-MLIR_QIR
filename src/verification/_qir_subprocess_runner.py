@@ -29,41 +29,73 @@ def result_ptr(i: int) -> str:
 
 
 def _ensure_measurements(qir_code: str) -> Tuple[str, int]:
-    """Inject terminal mz+record_output calls if the QIR has none."""
-    m = re.search(r'"required_num_results"="(\d+)"', qir_code)
-    num_results = int(m.group(1)) if m else 0
-    if num_results > 0:
-        return qir_code, num_results
+    """Ensure ALL qubits are measured, matching qml.sample() all-wire behaviour.
 
+    Even when the QIR already has some mz calls (e.g. mid-circuit measurements),
+    we inject additional mz calls for any unmeasured qubits so that every shot
+    produces a bitstring of length == num_qubits, consistent with the Catalyst
+    runner which calls qml.sample() over all wires.
+    """
     m = re.search(r'"required_num_qubits"="(\d+)"', qir_code)
     num_qubits = int(m.group(1)) if m else 0
     if num_qubits == 0:
         return qir_code, 0
 
-    mz_lines = [
-        f"  call void @__quantum__qis__mz__body(%Qubit* {qubit_ptr(i)}, %Result* {result_ptr(i)})"
-        for i in range(num_qubits)
-    ]
-    record_lines = [
-        f"  call void @__quantum__rt__array_record_output(i64 {num_qubits}, i8* null)"
-    ] + [
-        f"  call void @__quantum__rt__result_record_output(%Result* {result_ptr(i)}, i8* null)"
-        for i in range(num_qubits)
-    ]
-    injected = "\n".join(mz_lines + record_lines) + "\n"
+    # Build qubit→result-slot map from existing mz calls
+    result_of_qubit: dict = {}
+    for mz_m in re.finditer(
+        r'call void @__quantum__qis__mz__body\(%Qubit\*\s*([^,]+),\s*%Result\*\s*([^)]+)\)',
+        qir_code,
+    ):
+        q_ptr = mz_m.group(1).strip()
+        r_ptr = mz_m.group(2).strip()
+        qi = 0 if q_ptr == 'null' else int(re.search(r'i64 (\d+)', q_ptr).group(1))
+        ri = 0 if r_ptr == 'null' else int(re.search(r'i64 (\d+)', r_ptr).group(1))
+        result_of_qubit[qi] = ri
 
-    if "  ret void" in qir_code:
-        last = qir_code.rfind("  ret void")
-        modified = qir_code[:last] + injected + qir_code[last:]
+    # Assign new result slots for any unmeasured qubits
+    next_slot = max(result_of_qubit.values(), default=-1) + 1
+    extra_mz = []
+    for qi in range(num_qubits):
+        if qi not in result_of_qubit:
+            result_of_qubit[qi] = next_slot
+            extra_mz.append(
+                f"  call void @__quantum__qis__mz__body("
+                f"%Qubit* {qubit_ptr(qi)}, %Result* {result_ptr(next_slot)})"
+            )
+            next_slot += 1
+
+    total = next_slot  # == num_qubits
+
+    # Record outputs in qubit-index order (matches qml.sample() wire order)
+    record = [f"  call void @__quantum__rt__array_record_output(i64 {total}, i8* null)"] + [
+        f"  call void @__quantum__rt__result_record_output(%Result* {result_ptr(result_of_qubit[i])}, i8* null)"
+        for i in range(num_qubits)
+    ]
+    injected = "\n".join(extra_mz + record) + "\n"
+
+    # Strip existing record_output calls (replaced by the full set above)
+    modified = re.sub(
+        r'[ \t]*call void @__quantum__rt__(?:array_record_output|result_record_output)\([^\n]*\)\n?',
+        '',
+        qir_code,
+    )
+
+    # Inject before the last ret void
+    if "  ret void" in modified:
+        last = modified.rfind("  ret void")
+        modified = modified[:last] + injected + modified[last:]
     else:
-        modified = qir_code + "\n" + injected
+        modified += "\n" + injected
 
+    # Update required_num_results in the temporary copy
     modified = re.sub(
         r'"required_num_results"="\d+"',
-        f'"required_num_results"="{num_qubits}"',
+        f'"required_num_results"="{total}"',
         modified,
     )
-    return modified, num_qubits
+
+    return modified, total
 
 
 def _parse_outputs(outputs: List, num_results: int) -> Dict[str, int]:

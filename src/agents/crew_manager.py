@@ -38,7 +38,7 @@ class TranslationResult:
 class CrewManager:
     """Manages multi-agent translation + verification workflow."""
 
-    def __init__(self, llm, knowledge_base=None, max_iterations: int = 3, verbose: bool = True):
+    def __init__(self, llm, knowledge_base=None, max_iterations: int = 5, verbose: bool = True):
         self.llm = llm
         self.max_iterations = max_iterations
         self.verbose = verbose
@@ -70,6 +70,7 @@ class CrewManager:
         self,
         mlir_code: str,
         shots: int = 1000,
+        force_agentic: bool = False,
     ) -> TranslationResult:
         """Full pipeline: dialect routing → QIR generation → verification loop.
 
@@ -77,9 +78,13 @@ class CrewManager:
             1. Deterministic QIR via MLIRParser + QIRGenerator
             2. Verify; if FAIL → agent repairs up to max_iterations times
 
-        Unknown dialects:
+        Unknown dialects (or force_agentic=True):
             1. Translation Specialist with web-search tools generates QIR agentically
             2. Verify; if FAIL → agent retranslates with feedback
+
+        Args:
+            force_agentic: Skip the deterministic parser even for known dialects.
+                           Useful for benchmarking LLM translation time/iterations.
         """
         from src.parsers.mlir_parser import MLIRParser
         from src.generators.qir_generator import QIRGenerator
@@ -99,7 +104,7 @@ class CrewManager:
         result.dialect = detected_dialect
 
         # ---- Phase 1: initial QIR generation ---------------------------
-        if is_known:
+        if is_known and not force_agentic:
             try:
                 circuit = MLIRParser().parse(mlir_code)
                 qir_code = QIRGenerator().generate(circuit, module_id="translated-circuit")
@@ -124,6 +129,9 @@ class CrewManager:
         feedback_str: Optional[str] = None
         previous_qir: Optional[str] = None
 
+        # Track the best attempt: prefer gate_match=True, then highest TVD similarity
+        best_attempt: dict = {'qir_code': qir_code, 'score': (-1, -1.0), 'vr': None}
+
         for iteration in range(1, self.max_iterations + 1):
             logger.info(f"=== Verification iteration {iteration}/{self.max_iterations} ===")
 
@@ -134,6 +142,16 @@ class CrewManager:
 
             gate_ok = vr['gate_comparison'].get('matches', False)
             tvd_ok = vr['similarity_passes']
+            similarity = vr.get('similarity', 0.0) or 0.0
+
+            # Update best attempt (score: gate_ok as int first, then similarity)
+            score = (int(gate_ok), similarity)
+            if score > best_attempt['score']:
+                best_attempt = {'qir_code': qir_code, 'score': score, 'vr': vr}
+                logger.debug(
+                    f"New best attempt at iteration {iteration}: "
+                    f"gate_ok={gate_ok}, similarity={similarity:.3f}"
+                )
 
             # Exit early — no LLM call needed when the pipeline already passes
             if gate_ok and tvd_ok:
@@ -199,7 +217,15 @@ class CrewManager:
                 logger.error(f"Agent repair failed on iteration {iteration + 1}: {e}")
                 break
 
-        result.qir_code = qir_code
+        # Return the best-scoring attempt, not necessarily the last one
+        best_gate_ok = best_attempt['score'][0] == 1
+        best_sim = best_attempt['score'][1]
+        logger.info(
+            f"Returning best attempt: gate_ok={best_gate_ok}, similarity={best_sim:.3f}"
+        )
+        result.qir_code = best_attempt['qir_code']
+        if best_attempt['vr'] is not None:
+            result.verification_result = best_attempt['vr']
         result.error_message = (
             f"Did not pass full verification after {result.iterations} iteration(s)"
         )

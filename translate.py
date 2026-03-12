@@ -371,13 +371,19 @@ def _build_llm(model_key: str):
     )
 
 
-def _run_agentic(mlir_code: str, model_key: str, max_iterations: int, shots: int) -> dict:
+def _run_agentic(
+    mlir_code: str,
+    model_key: str,
+    max_iterations: int,
+    shots: int,
+    force_agentic: bool = False,
+) -> dict:
     """Full agentic pipeline: translate + simulation-verified repair loop."""
     from src.agents.crew_manager import CrewManager
 
     llm = _build_llm(model_key)
     manager = CrewManager(llm=llm, max_iterations=max_iterations, verbose=False)
-    tr = manager.translate_with_verification(mlir_code, shots=shots)
+    tr = manager.translate_with_verification(mlir_code, shots=shots, force_agentic=force_agentic)
     return {
         "qir_code":            tr.qir_code or "",
         "dialect":             tr.dialect or "unknown",
@@ -449,12 +455,19 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
-        "--max-iterations", type=int, default=3, metavar="N",
-        help="Max agent refinement iterations (default: 3, only used with --model)",
+        "--max-iterations", type=int, default=5, metavar="N",
+        help="Max agent refinement iterations (default: 5, only used with --model)",
     )
     p.add_argument(
         "--shots", type=int, default=1000, metavar="N",
         help="Simulation shots for verification (default: 1000)",
+    )
+    p.add_argument(
+        "--force-agentic", action="store_true",
+        help=(
+            "Force LLM translation even for known dialects (skip deterministic parser). "
+            "Requires --model. Useful for benchmarking LLM performance."
+        ),
     )
     p.add_argument(
         "--no-verify", action="store_true",
@@ -541,7 +554,10 @@ def main() -> int:
             if args.no_verify:
                 result = _run_agentic_no_verify(mlir_code, args.model, args.max_iterations)
             else:
-                result = _run_agentic(mlir_code, args.model, args.max_iterations, args.shots)
+                result = _run_agentic(
+                    mlir_code, args.model, args.max_iterations, args.shots,
+                    force_agentic=args.force_agentic,
+                )
         else:
             try:
                 result = _run_deterministic(mlir_code)
@@ -575,31 +591,6 @@ def main() -> int:
 
     elapsed = time.time() - t0
 
-    # ── Log to translations.jsonl (same format as UI) ──────────────────────────
-    try:
-        from datetime import datetime
-        log_record = {
-            "timestamp": datetime.now().isoformat(),
-            "session_id": "cli",
-            "source": args.input,
-            "model": args.model or "deterministic",
-            "dialect": result.get("dialect", "unknown"),
-            "translation_time_s": elapsed,
-            "translation_path": result.get("translation_path", "deterministic"),
-            "iterations": result.get("iterations", 1),
-            "shots": args.shots,
-            "success": result.get("success", False),
-            "circuit_info": result.get("circuit_info", {}),
-            "mlir_input": mlir_code,
-            "qir_output": result.get("qir_code", ""),
-        }
-        log_file = _ROOT / "logs" / "translations.jsonl"
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        with log_file.open("a", encoding="utf-8") as _lf:
-            _lf.write(json.dumps(log_record) + "\n")
-    except Exception:
-        pass  # logging must never break the CLI
-
     # ── Gate comparison ────────────────────────────────────────────────────────
     # Prefer gate data from verification_result; fall back to standalone counter.
     vr = result.get("verification_result") or {}
@@ -610,9 +601,10 @@ def main() -> int:
 
     qir_code = result.get("qir_code", "")
 
-    # ── Write example_run_info/ report ─────────────────────────────────────────
+    # ── Write example_run_info/ report (capture filename for JSONL cross-link) ──
+    run_info_file: str | None = None
     try:
-        _write_run_info(
+        run_info_file = _write_run_info(
             source_label=args.input,
             model_key=args.model,
             mlir_code=mlir_code,
@@ -627,8 +619,37 @@ def main() -> int:
             verification_result=result.get("verification_result"),
             shots=args.shots,
         )
+        if run_info_file:
+            run_info_file = Path(run_info_file).name  # store just the filename
     except Exception:
         pass  # run-info writing must never break the CLI
+
+    # ── Log to translations.jsonl (same format as UI) ──────────────────────────
+    try:
+        from datetime import datetime
+        log_record = {
+            "timestamp": datetime.now().isoformat(),
+            "session_id": "cli",
+            "source": args.input,
+            "model": args.model or "deterministic",
+            "dialect": result.get("dialect", "unknown"),
+            "translation_time_s": elapsed,
+            "translation_path": result.get("translation_path", "deterministic"),
+            "force_agentic": getattr(args, "force_agentic", False),
+            "iterations": result.get("iterations", 1),
+            "shots": args.shots,
+            "success": result.get("success", False),
+            "circuit_info": result.get("circuit_info", {}),
+            "run_info_file": run_info_file,  # cross-link to detailed report
+            "mlir_input": mlir_code,
+            "qir_output": result.get("qir_code", ""),
+        }
+        log_file = _ROOT / "logs" / "translations.jsonl"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with log_file.open("a", encoding="utf-8") as _lf:
+            _lf.write(json.dumps(log_record) + "\n")
+    except Exception:
+        pass  # logging must never break the CLI
 
     # ── JSON output ────────────────────────────────────────────────────────────
     if args.json:

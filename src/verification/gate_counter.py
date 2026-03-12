@@ -66,11 +66,16 @@ class GateCounter:
             if n_x:
                 counts['x'] = n_x
 
-            # Two-qubit non-controlled gates
-            for gate in ('swap', 'cz'):
-                n = len(re.findall(rf'quake\.{gate}\s+%', mlir_code))
-                if n:
-                    counts[gate] = n
+            # Z gate: distinguish controlled (CZ) from plain Z
+            # In Quake dialect, controlled-Z is `quake.z [ctrl] target`, NOT `quake.cz`
+            n_cz = len(re.findall(r'quake\.z\s+\[', mlir_code))
+            if n_cz:
+                counts['cz'] = n_cz
+
+            # Two-qubit non-controlled gates (swap only — cz handled above)
+            n_swap = len(re.findall(r'quake\.swap\s+%', mlir_code))
+            if n_swap:
+                counts['swap'] = n_swap
 
             # Parametric gates
             for gate in ('rx', 'ry', 'rz', 'r1'):

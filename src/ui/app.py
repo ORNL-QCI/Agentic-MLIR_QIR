@@ -76,7 +76,14 @@ _log_lock = threading.Lock()
 _LOG_FILE = project_root / "logs" / "translations.jsonl"
 
 
-def _log_translation(session_id: str, mlir_input: str, result: dict, model: str = "deterministic") -> None:
+def _log_translation(
+    session_id: str,
+    mlir_input: str,
+    result: dict,
+    model: str = "deterministic",
+    run_info_file: str | None = None,
+    force_agentic: bool = False,
+) -> None:
     """Append one translation record to logs/translations.jsonl (thread-safe)."""
     record = {
         "timestamp": datetime.now().isoformat(),
@@ -86,10 +93,12 @@ def _log_translation(session_id: str, mlir_input: str, result: dict, model: str 
         "dialect": result.get("dialect", "unknown"),
         "translation_time_s": result.get("translation_time_s", 0),
         "translation_path": result.get("translation_path", "deterministic"),
+        "force_agentic": force_agentic,
         "iterations": result.get("iterations", 1),
         "shots": result.get("shots", 1000),
         "success": result.get("success", False),
         "circuit_info": result.get("circuit_info", {}),
+        "run_info_file": run_info_file,  # cross-link to detailed report
         "mlir_input": mlir_input,
         "qir_output": result.get("qir_code", ""),
     }
@@ -196,13 +205,28 @@ def render_sidebar():
             st.rerun()
 
     st.sidebar.subheader("🔧 Settings")
-    max_iterations = st.sidebar.slider("Max Iterations", 1, 5, 3)
+    max_iterations = st.sidebar.selectbox(
+        "Max Iterations",
+        options=[1, 2, 3, 4, 5, 7, 10],
+        index=4,  # default = 5
+        help="Maximum number of LLM repair iterations. Higher values give the agent more attempts but take longer.",
+    )
     verbose = st.sidebar.checkbox("Verbose Output", value=True)
+    force_agentic = st.sidebar.checkbox(
+        "Force LLM (skip deterministic)",
+        value=False,
+        help=(
+            "Always use the LLM agent even for known dialects (Catalyst/Quake). "
+            "Skips the deterministic parser. Useful for benchmarking LLM "
+            "translation time and iteration count."
+        ),
+    )
 
     return {
         'model': selected_model,
         'max_iterations': max_iterations,
         'verbose': verbose,
+        'force_agentic': force_agentic,
     }
 
 
@@ -239,6 +263,7 @@ def _run_deterministic_translation(
     mlir_input: str,
     detected_dialect: str,
     t0: float,
+    run_info_file: str | None = None,
 ) -> None:
     """Fast deterministic-only path. Stores result in session_state."""
     from src.parsers.mlir_parser import MLIRParser
@@ -270,6 +295,8 @@ def _run_deterministic_translation(
         mlir_input,
         st.session_state.translation_result,
         model="deterministic",
+        run_info_file=run_info_file,
+        force_agentic=False,
     )
     st.success(f"✓ Translation complete! Detected dialect: {detected_dialect}")
 
@@ -279,6 +306,7 @@ def _run_agentic_pipeline(
     detected_dialect,
     config: dict,
     t0: float,
+    run_info_file: str | None = None,
 ) -> None:
     """Agentic pipeline: deterministic first pass + verification + agent repair/translation.
 
@@ -352,7 +380,9 @@ def _run_agentic_pipeline(
         verbose=config['verbose'],
     )
 
-    result = manager.translate_with_verification(mlir_input, shots=1000)
+    result = manager.translate_with_verification(
+        mlir_input, shots=1000, force_agentic=config.get('force_agentic', False)
+    )
     elapsed = time.time() - t0
 
     circuit_info = _extract_circuit_info(mlir_input, result.qir_code or "")
@@ -373,6 +403,8 @@ def _run_agentic_pipeline(
         mlir_input,
         st.session_state.translation_result,
         model=config.get("model", "unknown"),
+        run_info_file=run_info_file,
+        force_agentic=config.get("force_agentic", False),
     )
 
     if result.success:
@@ -525,10 +557,17 @@ def render_translation_section(config):
                         dialect_is_known = False
 
                     # Routing: fast deterministic path vs full agentic pipeline
-                    if dialect_is_known and config['max_iterations'] == 1:
-                        _run_deterministic_translation(mlir_input, detected_dialect, t0)
+                    use_deterministic = (
+                        dialect_is_known
+                        and config['max_iterations'] == 1
+                        and not config.get('force_agentic', False)
+                    )
+                    if use_deterministic:
+                        _run_deterministic_translation(mlir_input, detected_dialect, t0,
+                                                       run_info_file=_log_path.name)
                     else:
-                        _run_agentic_pipeline(mlir_input, detected_dialect, config, t0)
+                        _run_agentic_pipeline(mlir_input, detected_dialect, config, t0,
+                                              run_info_file=_log_path.name)
 
                 except Exception as e:
                     st.error(f"Translation error: {str(e)}")

@@ -2,9 +2,58 @@
 
 from crewai import Agent, Task
 from typing import Optional
+import json
 import logging
+import re
 
 logger = logging.getLogger(__name__)
+
+
+# ── QIR extraction helpers ─────────────────────────────────────────────────────
+
+def _extract_qir(raw: str) -> str:
+    """Extract valid LLVM IR from an LLM response that may be wrapped in JSON
+    or markdown fences.
+
+    Handles these common LLM output patterns:
+      • {"answer": "...", ...}          — JSON object with a text field
+      • ```llvm\\n...```               — markdown-fenced code block
+      • Raw LLVM IR (no wrapper needed)
+    """
+    text = str(raw).strip()
+
+    # ── 1. JSON wrapper ───────────────────────────────────────────────────────
+    if text.startswith("{"):
+        try:
+            obj = json.loads(text)
+            for key in ("answer", "qir", "qir_code", "result", "output", "code"):
+                if key in obj and isinstance(obj[key], str):
+                    text = obj[key].strip()
+                    break
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # ── 2. Markdown fenced code block ─────────────────────────────────────────
+    fence_match = re.search(
+        r"```(?:llvm|llvmir|ir|c|cpp)?\s*\n(.*?)```",
+        text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if fence_match:
+        text = fence_match.group(1).strip()
+
+    # ── 3. Strip any remaining leading prose up to first LLVM IR token ────────
+    # Valid LLVM IR lines begin with: ';', '%', '@', 'define', 'declare',
+    # 'attributes', '!', 'source_filename', 'target', 'ModuleID'
+    _LLVM_START = re.compile(
+        r"^(;|%\w|@\w|define |declare |attributes |!|source_filename|target |ModuleID)",
+        re.MULTILINE,
+    )
+    m = _LLVM_START.search(text)
+    if m and m.start() > 0:
+        text = text[m.start():]
+
+    return text.strip()
 
 
 class TranslationAgent:
@@ -92,6 +141,12 @@ class TranslationAgent:
             )
 
         parts.append(
+            "OUTPUT FORMAT REQUIREMENT (MANDATORY):\n"
+            "Your final answer MUST be raw LLVM IR text. No JSON, no markdown, no prose.\n"
+            "The very first line must start with one of: `; ModuleID`, `;`, `@`, `%`, `define`, `declare`, `target`.\n"
+            "Example of the correct first line:  ; ModuleID = 'quantum_module'\n"
+            "Do NOT wrap the output in {\"answer\": ...} or any other JSON structure.\n"
+            "Do NOT use ``` code fences. Output the IR directly as plain text.\n\n"
             f"Translate the following MLIR quantum circuit{dialect_info} to QIR format:\n\n"
             f"```mlir\n{mlir_code}\n```\n\n"
             "Requirements:\n"
@@ -101,7 +156,7 @@ class TranslationAgent:
             "3. Ensure all gate names are correctly mapped to __quantum__qis__*__body calls\n"
             "4. Use correct qubit pointer syntax (null for qubit 0, inttoptr for others)\n"
             "5. Follow QIR specification standards\n\n"
-            "Return ONLY the complete QIR code, no explanations."
+            "Return ONLY the complete QIR code as raw LLVM IR. No JSON. No markdown fences."
         )
 
         if iteration > 1 and previous_qir and feedback:
@@ -122,4 +177,6 @@ class TranslationAgent:
             agent=self.agent,
         )
         result = self.agent.execute_task(task)
-        return str(result)
+        qir = _extract_qir(str(result))
+        logger.debug(f"Extracted QIR (first 120 chars): {qir[:120]!r}")
+        return qir

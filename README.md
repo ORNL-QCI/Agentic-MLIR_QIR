@@ -146,6 +146,10 @@ python translate.py circuit.mlir --model gpt-oss-20b
 
 # Unknown / custom MLIR dialect — agent researches the spec then translates
 python translate.py my_custom_dialect.mlir --model llama3.1-8b
+
+# Force LLM even for known dialects (skip deterministic parser)
+# Useful for benchmarking LLM translation time and iterations
+python translate.py circuit.mlir --model llama3.1-8b --force-agentic
 ```
 
 ### JSON output (for scripting / CI)
@@ -232,6 +236,7 @@ Available model keys:
 | `--model MODEL_KEY` | *(none)* | Enable agentic pipeline with this model (see `--list-models`) |
 | `--max-iterations N` | `3` | Max agent refinement iterations (requires `--model`) |
 | `--shots N` | `1000` | Simulation shots for TVD verification |
+| `--force-agentic` | off | Skip deterministic parser; always use LLM (requires `--model`). Best for benchmarking LLM translation time and iterations on known circuits |
 | `--no-verify` | off | Skip quantum simulation; gate comparison still shown |
 | `--json` | off | Output everything as JSON to stdout |
 | `--quiet` / `-q` | off | Suppress metadata — only QIR is printed |
@@ -265,14 +270,24 @@ Available model keys:
 1. Launch: `streamlit run src/ui/app.py`
 2. Select LLM model from sidebar (local Ollama or free HuggingFace)
 3. Load example or paste MLIR code
-4. Click **Translate to QIR**
-5. View **Translation Time**, **Iterations**, and **Translation Path** metrics
-6. Open **Verification Results** expander to see:
+4. *(Optional)* Tick **Force LLM (skip deterministic)** in sidebar Settings to bypass the rule-based parser and always use the LLM agent — useful for benchmarking translation time and iteration count across models
+5. Click **Translate to QIR**
+6. View **Translation Time**, **Iterations**, and **Translation Path** metrics
+7. Open **Verification Results** expander to see:
    - Pass/fail banner (TVD ≥ 95% + gate match)
    - Side-by-side QIR vs MLIR distribution bar charts
    - TVD similarity score (real execution at 1,000 shots)
    - Per-gate MLIR vs QIR comparison table
-7. Download generated `.ll` file
+8. Download generated `.ll` file
+
+**Sidebar settings summary:**
+
+| Setting | Description |
+|---------|-------------|
+| Model selector | Ollama local / HuggingFace / OpenAI model |
+| Max Iterations | 1–5 agent refinement iterations |
+| Verbose Output | Show agent reasoning in the run log |
+| **Force LLM (skip deterministic)** | Always use the LLM; skip rule-based parser. Useful for benchmarking. |
 
 ---
 
@@ -311,6 +326,9 @@ crew = CrewManager(llm=llm, max_iterations=3)
 
 # Full pipeline: translate → verify → repair loop
 result = crew.translate_with_verification(mlir_code, shots=1000)
+
+# Force LLM even for known dialects (skip deterministic parser)
+result = crew.translate_with_verification(mlir_code, shots=1000, force_agentic=True)
 
 if result.success:
     print(f"✓ Verified in {result.iterations} iteration(s)")
@@ -494,7 +512,7 @@ Register in `src/dialects/dialect_detector.py`.
 ### Level 2: QIR Execution
 - ✓ `qirrunner` Python package (qir-alliance) — real sparse simulator
 - ✓ Pre-built wheel — no LLVM installation required
-- ✓ Auto-injects terminal measurements when QIR has none
+- ✓ Always measures **all qubits** (matching `qml.sample()` all-wire behaviour) — injects extra `mz` calls for unmeasured qubits at run time; original QIR unchanged
 - ✓ Physics-correct mock fallback if unavailable
 
 ### Level 3: MLIR Execution
@@ -505,7 +523,8 @@ Register in `src/dialects/dialect_detector.py`.
 ### Level 4: Statistical Comparison
 - ✓ Total Variation Distance (TVD)
 - ✓ KL Divergence
-- ✓ 95% similarity threshold
+- ✓ 95% similarity threshold (PASS ≥ 95%)
+- ✓ Verification loop tracks **best-scoring attempt** — returns the iteration with the highest gate + TVD score, not just the last one
 
 ---
 
