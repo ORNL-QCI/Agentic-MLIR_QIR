@@ -152,6 +152,39 @@ class KnowledgeBase:
 
             logger.debug(f"Added batch {i // batch_size + 1}/{(len(documents) - 1) // batch_size + 1}")
 
+    def add_texts(self, texts: List[str], metadatas: List[Dict]) -> None:
+        """Chunk and add raw text strings directly to the knowledge base.
+
+        Used for user-provided documentation (HITL feature) so content is
+        immediately available to the RAGTool without re-initialising from disk.
+
+        Args:
+            texts: List of raw text strings to chunk and store
+            metadatas: Parallel list of metadata dicts (e.g. {'source': url, 'category': ...})
+        """
+        import time
+        from .chunking import DocumentChunker
+
+        chunker = DocumentChunker()
+        documents = []
+        for text, meta in zip(texts, metadatas):
+            for chunk in chunker.chunk_text(text):
+                documents.append(Document(content=chunk, metadata=meta))
+
+        if not documents:
+            logger.warning("add_texts: no chunks produced from input texts")
+            return
+
+        # Use timestamp-based IDs to avoid collisions with existing docs
+        base_id = int(time.time() * 1000)
+        ids = [f"user_{base_id}_{i}" for i in range(len(documents))]
+        self.collection.add(
+            ids=ids,
+            documents=[d.content for d in documents],
+            metadatas=[d.metadata for d in documents],
+        )
+        logger.info("add_texts: added %d chunks to knowledge base", len(documents))
+
     def query(self, query: str, n_results: int = 5,
               where: Optional[Dict] = None) -> List[Document]:
         """Query the knowledge base.

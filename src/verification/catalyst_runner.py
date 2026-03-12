@@ -112,12 +112,21 @@ class CatalystRunner(BaseRunner):
         import numpy as np
         from src.parsers.mlir_parser import MLIRParser
 
+        # Always use the pipeline-supplied shots value.
+        # The MLIR source may contain `quantum.device shots(0)` (analytically
+        # compiled circuits) — we must ignore that and use the pipeline value
+        # so both backends run with the same number of samples for TVD comparison.
+        if shots <= 0:
+            shots = 1000
+            logger.debug("MLIR device shots=0 overridden to 1000 for TVD comparison")
+
         parsed = MLIRParser().parse(mlir_code)
         n = parsed.num_qubits
         if n == 0:
             raise ValueError("Parsed circuit has 0 qubits")
 
         ordered_ops = parsed.ordered_ops or []
+        # shots is always > 0 here (guaranteed by override above)
         dev = qml.device('lightning.qubit', wires=n, shots=shots)
 
         # ---------- gate dispatcher (called inside QNode) ----------
@@ -144,6 +153,16 @@ class CatalystRunner(BaseRunner):
             else:
                 logger.debug(f"Skipping unknown gate: {name}")
 
+        # Determine which wires to sample — must match the QIR output order.
+        # The MLIR return statement defines the measured qubits in order;
+        # MLIRParser stores them in circuit.measurements.
+        # Sampling only these wires ensures bitstring length matches QIR output.
+        measured_wires = (
+            [m.qubit for m in parsed.measurements]
+            if parsed.measurements
+            else list(range(n))
+        )
+
         if not parsed.has_conditionals:
             # ----- Simple circuit: no mid-circuit measurements -----
             @catalyst.qjit
@@ -152,7 +171,7 @@ class CatalystRunner(BaseRunner):
                 for op_type, op_data in ordered_ops:
                     if op_type == 'gate':
                         apply_gate(op_data)
-                return qml.sample()
+                return qml.sample(wires=measured_wires)
 
         else:
             # ----- Circuit with mid-circuit measurements & conditionals -----

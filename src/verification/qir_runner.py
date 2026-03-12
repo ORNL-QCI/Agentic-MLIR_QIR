@@ -45,6 +45,11 @@ class QIRRunner(BaseRunner):
 
     def run(self, qir_code: str, shots: int = 1000) -> Dict[str, int]:
         """Execute QIR circuit, falling back to mock on any failure."""
+        # Enforce consistent shot count — never allow 0 shots (would produce
+        # incompatible results for TVD comparison against other backends).
+        if shots <= 0:
+            shots = 1000
+            logger.debug("shots=0 overridden to 1000 for TVD comparison")
         if not self.is_available():
             logger.info("qirrunner package not available — using mock results")
             self._last_run_was_mock = True

@@ -162,7 +162,7 @@
       \begin{exampleblock}{Bell State --- 2 qubits in perfect correlation}
         \scriptsize
         \texttt{q0: ----H----$\bullet$----M}\\
-        \texttt{\phantom{q0: }         |}\\
+        \texttt{\phantom{q0:} \hspace{6.5mm} |}\\
         \texttt{q1: ---------X----M}\\[2pt]
         H = Hadamard (superposition), $\bullet$--X = CNOT (entanglement)\\
         Result: always \texttt{00} or \texttt{11}, never \texttt{01} or \texttt{10}
@@ -171,24 +171,31 @@
       \begin{center}
       \begin{tikzpicture}[
         lbl/.style={font=\scriptsize,text=white},
-        gate/.style={draw=mlirblue,fill=mlirblue!30,minimum width=0.5cm,
-                     minimum height=0.5cm,rounded corners=2pt,font=\scriptsize\bfseries},
-        meas/.style={draw=qirgreen,fill=qirgreen!20,minimum width=0.5cm,
-                     minimum height=0.5cm,rounded corners=2pt,font=\tiny},
-        wire/.style={thick,white},
-        scale=0.85,
+        gate/.style={draw=mlirblue,fill=mlirblue!30,minimum width=0.6cm,
+                     minimum height=0.6cm,rounded corners=2pt,font=\scriptsize\bfseries},
+        meas/.style={draw=qirgreen,fill=qirgreen!25,minimum width=0.6cm,
+                     minimum height=0.6cm,rounded corners=2pt,font=\scriptsize\bfseries},
+        wire/.style={thick,black},
+        scale=0.90,
       ]
-        \draw[wire](0,0)--(5.8,0);
-        \draw[wire](0,-1)--(5.8,-1);
-        \node[lbl] at (-0.2,0) {q0};
-        \node[lbl] at (-0.2,-1){q1};
-        \node[gate] at (1.0,0) {H};
-        \draw[wire,mlirblue](1.8,0)--(1.8,-1);
-        \fill[mlirblue](1.8,0) circle(3pt);
-        \node[gate,draw=ssaorange,fill=ssaorange!30] at (1.8,-1){X};
-        \node[meas] at (3.2,0){M};
-        \node[meas] at (3.2,-1){M};
-        \node[lbl] at (4.5,0.35){\tiny always 00 or 11};
+        % qubit wires (stop at measurement)
+        \draw[wire](0.3,0)--(4.2,0);
+        \draw[wire](0.3,-1.1)--(4.2,-1.1);
+        % classical output (double line after measurement)
+        \draw[black,double,double distance=1pt,thin](4.2,0)--(4.7,0);
+        \draw[black,double,double distance=1pt,thin](4.2,-1.1)--(4.7,-1.1);
+        % labels
+        \node[lbl] at (0.0,0)   {q0};
+        \node[lbl] at (0.0,-1.1){q1};
+        % H gate on q0
+        \node[gate] at (1.2,0) {H};
+        % CNOT: control on q0, target on q1
+        \draw[wire,mlirblue](2.4,0)--(2.4,-1.1);
+        \fill[mlirblue](2.4,0) circle(3.5pt);
+        \node[gate,draw=ssaorange,fill=ssaorange!35] at (2.4,-1.1){X};
+        % measurements
+        \node[meas] at (3.6,0)   {M};
+        \node[meas] at (3.6,-1.1){M};
       \end{tikzpicture}
       \end{center}
       \vspace{6pt}

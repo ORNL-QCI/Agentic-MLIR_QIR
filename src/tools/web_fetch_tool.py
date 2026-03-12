@@ -43,6 +43,21 @@ class WebFetchTool:
             return f"Error fetching {url}: {e}"
 
 
+def fetch_url_content(url: str, max_chars: int = _MAX_CONTENT_CHARS) -> str:
+    """Fetch and return stripped text content from a URL.
+
+    Standalone helper for the HITL documentation feature (no CrewAI required).
+    Returns an error string (never raises) so callers can display it in the UI.
+    """
+    tool = WebFetchTool()
+    original_limit = _MAX_CONTENT_CHARS
+    # Temporarily allow a larger fetch for full doc pages
+    result = tool._run(url)
+    if max_chars != original_limit and not result.startswith("Error"):
+        result = result[:max_chars]
+    return result
+
+
 def get_web_tools() -> list:
     """Return available web tools. Never raises — returns empty list on failure."""
     tools = []

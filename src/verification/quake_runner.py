@@ -50,6 +50,10 @@ class QuakeRunner(BaseRunner):
     # ── public run ────────────────────────────────────────────────────────────
 
     def run(self, quake_mlir_code: str, shots: int = 1000) -> dict:
+        # Enforce consistent shot count — never allow 0 shots (would produce
+        # incompatible results for TVD comparison against other backends).
+        if shots <= 0:
+            shots = 1000
         if not self.is_available():
             self._last_run_was_mock = True
             return self._mock_run(quake_mlir_code, shots)

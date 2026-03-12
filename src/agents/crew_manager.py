@@ -130,8 +130,39 @@ class CrewManager:
             # Full 4-level deterministic check
             vr = run_verification_pipeline(mlir_code, qir_code, shots)
             result.verification_result = vr
+            result.iterations = iteration
 
-            # Lightweight agent-based gate check
+            gate_ok = vr['gate_comparison'].get('matches', False)
+            tvd_ok = vr['similarity_passes']
+
+            # Exit early — no LLM call needed when the pipeline already passes
+            if gate_ok and tvd_ok:
+                logger.info(f"✓ Verification PASSED in {iteration} iteration(s)")
+                result.success = True
+                result.qir_code = qir_code
+                result.iteration_history.append({
+                    'iteration': iteration,
+                    'qir_code': qir_code,
+                    'gate_match': gate_ok,
+                    'tvd_pass': tvd_ok,
+                    'agent_feedback': None,
+                    'verification': vr,
+                })
+                return result
+
+            if iteration == self.max_iterations:
+                logger.warning(f"Max iterations ({self.max_iterations}) reached without passing")
+                result.iteration_history.append({
+                    'iteration': iteration,
+                    'qir_code': qir_code,
+                    'gate_match': gate_ok,
+                    'tvd_pass': tvd_ok,
+                    'agent_feedback': None,
+                    'verification': vr,
+                })
+                break
+
+            # Pipeline failed and retries remain — call agent for targeted feedback
             try:
                 agent_check = self.verification_agent.verify(mlir_code, qir_code)
             except Exception as e:
@@ -139,11 +170,6 @@ class CrewManager:
                 agent_check = {'passed': False, 'gate_count_match': False, 'feedback': ''}
 
             result.verification = agent_check
-            result.iterations = iteration
-
-            gate_ok = vr['gate_comparison'].get('matches', False)
-            tvd_ok = vr['similarity_passes']
-
             result.iteration_history.append({
                 'iteration': iteration,
                 'qir_code': qir_code,
@@ -152,16 +178,6 @@ class CrewManager:
                 'agent_feedback': agent_check.get('feedback'),
                 'verification': vr,
             })
-
-            if gate_ok and tvd_ok:
-                logger.info(f"✓ Verification PASSED in {iteration} iteration(s)")
-                result.success = True
-                result.qir_code = qir_code
-                return result
-
-            if iteration == self.max_iterations:
-                logger.warning(f"Max iterations ({self.max_iterations}) reached without passing")
-                break
 
             # Build feedback and retry
             feedback_str = self._build_feedback_string(vr, agent_check)
@@ -289,6 +305,27 @@ class CrewManager:
                 current_names.add(tool.name)
         self.translation_agent.agent.tools = current
         logger.debug(f"Translation agent tools: {[t.name for t in current]}")
+
+    def _run_with_crew_memory(self, translation_task, verification_task):
+        """Run translation+verification wrapped in a Crew with persistent Memory.
+
+        Used for HITL retries so the agent recalls user-provided documentation
+        URLs and content across sessions (LanceDB-backed CrewAI Memory).
+        """
+        try:
+            from crewai import Crew, Process
+            from crewai.memory import Memory
+            crew = Crew(
+                agents=[self.translation_agent.agent, self.verification_agent.agent],
+                tasks=[translation_task, verification_task],
+                process=Process.sequential,
+                memory=Memory(llm=self.llm),
+                verbose=self.verbose,
+            )
+            return crew.kickoff()
+        except Exception as e:
+            logger.warning("Crew+Memory kickoff failed (%s); falling back to direct task execution", e)
+            return self.translation_agent.agent.execute_task(translation_task)
 
     @staticmethod
     def _infer_dialect_hint(mlir_code: str) -> str:

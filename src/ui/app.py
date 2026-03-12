@@ -12,6 +12,12 @@ sys.path.insert(0, str(project_root / 'src'))
 import json
 import logging
 import os
+
+# Disable CrewAI telemetry BEFORE any crewai import.
+# CrewAI telemetry registers OS signal handlers which fail in Streamlit's
+# background thread ("signal only works in main thread").
+os.environ.setdefault("CREWAI_TELEMETRY_OPT_OUT", "true")
+os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 import threading
 import time
 import uuid
@@ -70,15 +76,19 @@ _log_lock = threading.Lock()
 _LOG_FILE = project_root / "logs" / "translations.jsonl"
 
 
-def _log_translation(session_id: str, mlir_input: str, result: dict) -> None:
+def _log_translation(session_id: str, mlir_input: str, result: dict, model: str = "deterministic") -> None:
     """Append one translation record to logs/translations.jsonl (thread-safe)."""
     record = {
         "timestamp": datetime.now().isoformat(),
         "session_id": session_id,
+        "source": "ui",
+        "model": model,
         "dialect": result.get("dialect", "unknown"),
         "translation_time_s": result.get("translation_time_s", 0),
         "translation_path": result.get("translation_path", "deterministic"),
         "iterations": result.get("iterations", 1),
+        "shots": result.get("shots", 1000),
+        "success": result.get("success", False),
         "circuit_info": result.get("circuit_info", {}),
         "mlir_input": mlir_input,
         "qir_output": result.get("qir_code", ""),
@@ -259,6 +269,7 @@ def _run_deterministic_translation(
         st.session_state.session_id,
         mlir_input,
         st.session_state.translation_result,
+        model="deterministic",
     )
     st.success(f"✓ Translation complete! Detected dialect: {detected_dialect}")
 
@@ -361,6 +372,7 @@ def _run_agentic_pipeline(
         st.session_state.session_id,
         mlir_input,
         st.session_state.translation_result,
+        model=config.get("model", "unknown"),
     )
 
     if result.success:
@@ -377,6 +389,76 @@ def _run_agentic_pipeline(
         )
         if result.error_message:
             st.info(result.error_message)
+
+        # ── Human-in-the-loop: offer doc links when unknown dialect fails ──
+        if result.translation_path == "ai_agent":
+            with st.expander("Need help? Provide documentation links for this dialect", expanded=True):
+                st.markdown(
+                    "The agent could not translate this dialect. "
+                    "Paste official documentation URLs below (one per line). "
+                    "The agent will fetch them, store them in its knowledge base, and retry."
+                )
+                hitl_urls = st.text_area(
+                    "Documentation URLs (one per line)",
+                    key="hitl_urls",
+                    placeholder="https://mlir.llvm.org/docs/Dialects/MyDialect/\nhttps://github.com/org/repo/blob/main/docs/dialect.md",
+                    height=100,
+                )
+                if st.button("Fetch Documentation & Retry", key="hitl_retry_btn"):
+                    urls = [u.strip() for u in hitl_urls.splitlines() if u.strip()]
+                    if not urls:
+                        st.error("Please enter at least one URL.")
+                    else:
+                        from src.tools.web_fetch_tool import fetch_url_content
+                        from src.rag.knowledge_base import KnowledgeBase
+                        from pathlib import Path as _Path
+                        _kb_dir = _Path("knowledge_base/mlir_docs")
+                        _kb_dir.mkdir(parents=True, exist_ok=True)
+                        fetched_texts, fetched_metas = [], []
+                        for url in urls:
+                            with st.spinner(f"Fetching {url} …"):
+                                content = fetch_url_content(url)
+                            if content.startswith("Error"):
+                                st.warning(f"Could not fetch {url}: {content}")
+                                continue
+                            # Persist to disk so it survives session restart
+                            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                            safe = url.replace('/', '_').replace(':', '')[:60]
+                            (_kb_dir / f"user_{ts}_{safe}.md").write_text(
+                                f"# User-provided documentation\nSource: {url}\n\n{content}"
+                            )
+                            fetched_texts.append(content)
+                            fetched_metas.append({'source': url, 'category': 'user_provided'})
+                            st.success(f"Fetched: {url} ({len(content):,} chars)")
+
+                        if fetched_texts:
+                            with st.spinner("Indexing into knowledge base …"):
+                                try:
+                                    kb = KnowledgeBase()
+                                    kb.add_texts(fetched_texts, fetched_metas)
+                                    st.success(f"Added {len(fetched_texts)} document(s) to knowledge base.")
+                                except Exception as kb_err:
+                                    st.warning(f"Knowledge base indexing failed: {kb_err}")
+
+                            st.info("Retrying translation with updated knowledge base …")
+                            _run_agentic_pipeline(
+                                mlir_input, result.dialect or detected_dialect, config, time.time()
+                            )
+
+
+# ------------------------------------------------------------------ #
+#  Input validation                                                   #
+# ------------------------------------------------------------------ #
+
+def _is_valid_mlir(text: str) -> bool:
+    """Heuristic: require at least 2 MLIR structural indicators."""
+    indicators = [
+        'module', 'func.func', 'quantum.', 'quake.', '!quantum',
+        'qnode', 'catalyst.', 'llvm.emit_c_interface',
+        '@__quantum', 'quantum.alloc', 'quantum.custom',
+    ]
+    matched = sum(1 for s in indicators if s in text)
+    return len(text.strip()) >= 30 and matched >= 2
 
 
 # ------------------------------------------------------------------ #
@@ -416,32 +498,44 @@ def render_translation_section(config):
 
     # Translation execution
     if translate_btn and mlir_input.strip():
+        if not _is_valid_mlir(mlir_input):
+            st.error(
+                "Input does not appear to be a valid MLIR quantum circuit. "
+                "Please paste MLIR code in Catalyst or Quake dialect."
+            )
+            st.info("Example: paste the contents of `examples/mlir/bell_state.mlir`")
+            st.stop()
+
         with st.spinner("Translating... This may take a minute."):
-            try:
-                from src.parsers.mlir_parser import MLIRParser
-                from src.dialects.base_dialect import UnsupportedDialectError
-
-                t0 = time.time()
-
-                # Detect dialect
+            from src.utils.run_logger import capture_translation_log
+            _error_dir = project_root / "example_run_info"
+            with capture_translation_log(mlir_input, _error_dir) as _log_path:
                 try:
-                    detected_dialect = MLIRParser().get_detected_dialect(mlir_input)
-                    dialect_is_known = True
-                except UnsupportedDialectError:
-                    detected_dialect = None
-                    dialect_is_known = False
+                    from src.parsers.mlir_parser import MLIRParser
+                    from src.dialects.base_dialect import UnsupportedDialectError
 
-                # Routing: fast deterministic path vs full agentic pipeline
-                if dialect_is_known and config['max_iterations'] == 1:
-                    _run_deterministic_translation(mlir_input, detected_dialect, t0)
-                else:
-                    _run_agentic_pipeline(mlir_input, detected_dialect, config, t0)
+                    t0 = time.time()
 
-            except Exception as e:
-                st.error(f"Translation error: {str(e)}")
-                logger.exception("Translation failed")
-                import traceback
-                st.code(traceback.format_exc())
+                    # Detect dialect
+                    try:
+                        detected_dialect = MLIRParser().get_detected_dialect(mlir_input)
+                        dialect_is_known = True
+                    except UnsupportedDialectError:
+                        detected_dialect = None
+                        dialect_is_known = False
+
+                    # Routing: fast deterministic path vs full agentic pipeline
+                    if dialect_is_known and config['max_iterations'] == 1:
+                        _run_deterministic_translation(mlir_input, detected_dialect, t0)
+                    else:
+                        _run_agentic_pipeline(mlir_input, detected_dialect, config, t0)
+
+                except Exception as e:
+                    st.error(f"Translation error: {str(e)}")
+                    logger.exception("Translation failed")
+                    import traceback
+                    st.code(traceback.format_exc())
+            st.caption(f"Run log saved → `example_run_info/{_log_path.name}`")
 
     # Display result
     with col2:

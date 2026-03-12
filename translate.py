@@ -56,6 +56,145 @@ def BOLD(t: str)   -> str: return _c("1",  t)
 def DIM(t: str)    -> str: return _c("2",  t)
 
 
+# ── Run-info report writer ─────────────────────────────────────────────────────
+
+def _write_run_info(
+    *,
+    source_label: str,
+    model_key: str,
+    mlir_code: str,
+    qir_code: str,
+    dialect: str,
+    translation_path: str,
+    translation_time_s: float,
+    iterations: int,
+    success: bool,
+    error_message: str | None,
+    gate_comparison: dict,
+    verification_result: "dict | None",
+    shots: int,
+) -> None:
+    """Write a detailed markdown run report to example_run_info/."""
+    from datetime import datetime
+
+    now = datetime.now()
+    ts = now.strftime("%Y%m%d_%H%M%S")
+
+    # Derive a short slug from source label (filename stem or 'stdin')
+    import re
+    slug = re.sub(r"[^a-zA-Z0-9_-]", "_", Path(source_label).stem if source_label != "-" else "stdin")
+    filename = f"run_cli_{slug}_{ts}.md"
+    out_dir = _ROOT / "example_run_info"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    lines: list[str] = []
+
+    # ── Header ──────────────────────────────────────────────────────────────────
+    lines += [
+        f"# CLI Translation Run — `{slug}`",
+        "",
+        f"- **Date**: {now.strftime('%Y-%m-%d %H:%M:%S')}",
+        f"- **Source**: `{source_label}`",
+        f"- **Model**: `{model_key if model_key else 'deterministic (no LLM)'}`",
+        f"- **Dialect**: `{dialect}`",
+        f"- **Translation Path**: `{translation_path}`",
+        f"- **Iterations**: {iterations}",
+        f"- **Translation Time**: {translation_time_s * 1000:.1f} ms" if translation_time_s < 1.0
+            else f"- **Translation Time**: {translation_time_s:.2f} s",
+        f"- **Simulation Shots**: {shots}",
+        f"- **Overall Result**: {'✅ SUCCESS' if success else '❌ NOT VERIFIED'}",
+        "",
+        "---",
+        "",
+    ]
+
+    # ── Gate Comparison ──────────────────────────────────────────────────────────
+    lines += ["## Gate Comparison", ""]
+    gc = gate_comparison or {}
+    mlir_gates: dict = gc.get("mlir_gates", {})
+    qir_gates:  dict = gc.get("qir_gates",  {})
+    all_gates = sorted(set(mlir_gates) | set(qir_gates))
+
+    if all_gates:
+        lines += ["| Gate | MLIR | QIR | Status |", "|------|------|-----|--------|"]
+        for g in all_gates:
+            mc, qc = mlir_gates.get(g, 0), qir_gates.get(g, 0)
+            status = "✅ match" if mc == qc else "❌ mismatch"
+            lines.append(f"| `{g}` | {mc} | {qc} | {status} |")
+        mt = gc.get("mlir_total", sum(mlir_gates.values()))
+        qt = gc.get("qir_total",  sum(qir_gates.values()))
+        total_status = "✅ match" if mt == qt else "❌ mismatch"
+        lines += [
+            f"| **Total** | **{mt}** | **{qt}** | **{total_status}** |",
+            "",
+        ]
+        if gc.get("discrepancies"):
+            lines += ["**Discrepancies:**", ""]
+            for d in gc["discrepancies"]:
+                diff = d["difference"]
+                lines.append(f"- `{d['gate']}`: MLIR={d['mlir_count']}, QIR={d['qir_count']} (diff {'+' if diff > 0 else ''}{diff})")
+            lines.append("")
+    else:
+        lines += ["*(no gate data available)*", ""]
+
+    lines.append("---")
+    lines.append("")
+
+    # ── Verification Results ─────────────────────────────────────────────────────
+    lines += ["## Verification Results", ""]
+    if verification_result and verification_result.get("success"):
+        vr = verification_result
+        gate_match = vr.get("gate_comparison", {}).get("matches", False)
+        sim_pass   = vr.get("similarity_passes", False)
+        sim_pct    = vr.get("similarity", 0.0) * 100
+        qir_lbl  = "mock" if vr.get("qir_is_mock")      else "real execution"
+        mlir_lbl = "mock" if vr.get("catalyst_is_mock") else "real execution"
+        runner   = vr.get("mlir_runner_label", "MLIR runner")
+
+        lines += [
+            f"| Metric | Value |",
+            f"|--------|-------|",
+            f"| QIR backend | {qir_lbl} |",
+            f"| MLIR backend | {runner} ({mlir_lbl}) |",
+            f"| Gate match | {'✅ PASS' if gate_match else '❌ FAIL'} |",
+            f"| TVD similarity | {sim_pct:.1f}% — {'✅ PASS' if sim_pass else '❌ FAIL (need ≥ 95%)'} |",
+            "",
+        ]
+
+        qir_dist  = vr.get("qir_distribution", {})
+        mlir_dist = vr.get("catalyst_distribution", {})
+        if qir_dist or mlir_dist:
+            lines += ["### Distribution Comparison", "", "| Outcome | QIR Count | MLIR Count |", "|---------|-----------|------------|"]
+            all_keys = sorted(set(qir_dist) | set(mlir_dist))
+            for k in all_keys:
+                lines.append(f"| `{k}` | {qir_dist.get(k, 0)} | {mlir_dist.get(k, 0)} |")
+            lines.append("")
+    elif error_message:
+        lines += [f"⚠️ {error_message}", ""]
+    else:
+        lines += ["*(verification not run)*", ""]
+
+    lines.append("---")
+    lines.append("")
+
+    # ── Iteration History ────────────────────────────────────────────────────────
+    # (only for agentic runs that expose iteration history via model_key)
+    if model_key and iterations > 1:
+        lines += [f"## Agent Iterations", "", f"Total refinement iterations: **{iterations}**", ""]
+        lines.append("---")
+        lines.append("")
+
+    # ── MLIR Input ───────────────────────────────────────────────────────────────
+    lines += ["## MLIR Input", "", "```mlir", mlir_code.rstrip(), "```", "", "---", ""]
+
+    # ── QIR Output ───────────────────────────────────────────────────────────────
+    lines += ["## QIR Output", "", "```llvm", qir_code.rstrip() if qir_code else "(none)", "```", ""]
+
+    out_path = out_dir / filename
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return str(out_path)
+
+
 # ── Metadata renderer ──────────────────────────────────────────────────────────
 
 def _print_metadata(
@@ -436,6 +575,31 @@ def main() -> int:
 
     elapsed = time.time() - t0
 
+    # ── Log to translations.jsonl (same format as UI) ──────────────────────────
+    try:
+        from datetime import datetime
+        log_record = {
+            "timestamp": datetime.now().isoformat(),
+            "session_id": "cli",
+            "source": args.input,
+            "model": args.model or "deterministic",
+            "dialect": result.get("dialect", "unknown"),
+            "translation_time_s": elapsed,
+            "translation_path": result.get("translation_path", "deterministic"),
+            "iterations": result.get("iterations", 1),
+            "shots": args.shots,
+            "success": result.get("success", False),
+            "circuit_info": result.get("circuit_info", {}),
+            "mlir_input": mlir_code,
+            "qir_output": result.get("qir_code", ""),
+        }
+        log_file = _ROOT / "logs" / "translations.jsonl"
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with log_file.open("a", encoding="utf-8") as _lf:
+            _lf.write(json.dumps(log_record) + "\n")
+    except Exception:
+        pass  # logging must never break the CLI
+
     # ── Gate comparison ────────────────────────────────────────────────────────
     # Prefer gate data from verification_result; fall back to standalone counter.
     vr = result.get("verification_result") or {}
@@ -445,6 +609,26 @@ def main() -> int:
     )
 
     qir_code = result.get("qir_code", "")
+
+    # ── Write example_run_info/ report ─────────────────────────────────────────
+    try:
+        _write_run_info(
+            source_label=args.input,
+            model_key=args.model,
+            mlir_code=mlir_code,
+            qir_code=qir_code,
+            dialect=result.get("dialect", "unknown"),
+            translation_path=result.get("translation_path", "deterministic"),
+            translation_time_s=elapsed,
+            iterations=result.get("iterations", 1),
+            success=result.get("success", False),
+            error_message=result.get("error_message"),
+            gate_comparison=gate_comparison,
+            verification_result=result.get("verification_result"),
+            shots=args.shots,
+        )
+    except Exception:
+        pass  # run-info writing must never break the CLI
 
     # ── JSON output ────────────────────────────────────────────────────────────
     if args.json:
