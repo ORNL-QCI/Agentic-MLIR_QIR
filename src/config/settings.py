@@ -50,6 +50,7 @@ class Settings(BaseSettings):
 
     # HuggingFace (optional for some embeddings)
     HUGGINGFACE_TOKEN: Optional[str] = Field(default=None, description="HuggingFace API token")
+    HF_TOKEN: Optional[str] = Field(default=None, description="HuggingFace API token (alias)")
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO", description="Logging level")
@@ -64,6 +65,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        extra = "ignore"  # Ignore unexpected env vars
 
 
 # Global settings instance

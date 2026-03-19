@@ -49,8 +49,10 @@ def _ensure_measurements(qir_code: str) -> Tuple[str, int]:
     ):
         q_ptr = mz_m.group(1).strip()
         r_ptr = mz_m.group(2).strip()
-        qi = 0 if q_ptr == 'null' else int(re.search(r'i64 (\d+)', q_ptr).group(1))
-        ri = 0 if r_ptr == 'null' else int(re.search(r'i64 (\d+)', r_ptr).group(1))
+        qi_match = re.search(r'i64 (\d+)', q_ptr)
+        qi = 0 if q_ptr == 'null' or not qi_match else int(qi_match.group(1))
+        ri_match = re.search(r'i64 (\d+)', r_ptr)
+        ri = 0 if r_ptr == 'null' or not ri_match else int(ri_match.group(1))
         result_of_qubit[qi] = ri
 
     # Assign new result slots for any unmeasured qubits

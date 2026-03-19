@@ -92,6 +92,15 @@ model_cache/
 Thumbs.db
 Desktop.ini
 
+# Claude Code plans
+.claude/plans/
+
+# Generated docs
+docs/
+
+# LaTeX paper folder
+2026_QCE_mlir_to_qir/
+
 # LaTeX auxiliary files
 docs/*.aux
 docs/*.fdb_latexmk
