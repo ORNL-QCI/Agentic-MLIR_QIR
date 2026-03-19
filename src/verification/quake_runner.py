@@ -88,11 +88,21 @@ class QuakeRunner(BaseRunner):
 
     def _mock_run(self, quake_mlir_code: str, shots: int) -> dict:
         import re
+        from itertools import product as _product
         m = re.search(r"quake\.alloca\s+!quake\.veq<(\d+)>", quake_mlir_code)
         num_q = int(m.group(1)) if m else 2
-        n_outcomes = 2 ** num_q
-        per_outcome = shots // n_outcomes
-        return {format(k, f"0{num_q}b"): per_outcome for k in range(n_outcomes)}
+
+        # Detect Bell/GHZ-like patterns (H + CNOT) to match QIRRunner mock
+        has_h = bool(re.search(r'quake\.h\b', quake_mlir_code))
+        has_cx = bool(re.search(r'quake\.x\b.*control|quake\.cnot\b', quake_mlir_code, re.IGNORECASE))
+        if has_h and has_cx:
+            z, o = '0' * num_q, '1' * num_q
+            return {z: shots // 2, o: shots - shots // 2}
+
+        bitstrings = [''.join(b) for b in _product('01', repeat=num_q)]
+        per = shots // len(bitstrings)
+        rem = shots % len(bitstrings)
+        return {bs: per + (1 if i < rem else 0) for i, bs in enumerate(bitstrings)}
 
 
 SimulatorRegistry.register(QuakeRunner)

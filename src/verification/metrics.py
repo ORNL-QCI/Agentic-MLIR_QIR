@@ -104,14 +104,15 @@ def compute_kl_divergence(dist1: Dict[str, int],
     # Get all outcomes
     all_outcomes = set(prob1.keys()) | set(prob2.keys())
 
-    # Compute KL divergence
+    # Compute KL divergence with numerically stable epsilon
+    eps = 1e-10
     kl_div = 0.0
     for outcome in all_outcomes:
-        p = prob1.get(outcome, 1e-10)  # Small epsilon to avoid log(0)
-        q = prob2.get(outcome, 1e-10)
+        p = prob1.get(outcome, eps)
+        q = prob2.get(outcome, eps)
 
-        if p > 0:
-            kl_div += p * math.log(p / q)
+        if p > eps:
+            kl_div += p * math.log(p / max(q, eps))
 
     return kl_div
 

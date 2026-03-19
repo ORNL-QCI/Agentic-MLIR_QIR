@@ -183,6 +183,9 @@ class GateCounter:
             'qir_gates': qir_counts
         }
 
+    # Gates to exclude from missing/extra reporting (infrastructure, not unitary)
+    _EXCLUDED_GATES = {'measure', 'mz'}
+
     def get_missing_gates(self, mlir_counts: Dict[str, int],
                           qir_counts: Dict[str, int]) -> List[str]:
         """Get gates present in MLIR but missing in QIR.
@@ -197,6 +200,7 @@ class GateCounter:
         mlir_normalized = {
             self.GATE_MAPPINGS.get(g, g.lower()): c
             for g, c in mlir_counts.items()
+            if self.GATE_MAPPINGS.get(g, g.lower()) not in self._EXCLUDED_GATES
         }
 
         missing = []
@@ -220,10 +224,13 @@ class GateCounter:
         mlir_normalized = {
             self.GATE_MAPPINGS.get(g, g.lower()): c
             for g, c in mlir_counts.items()
+            if self.GATE_MAPPINGS.get(g, g.lower()) not in self._EXCLUDED_GATES
         }
 
         extra = []
         for gate in qir_counts:
+            if gate in self._EXCLUDED_GATES:
+                continue
             if gate not in mlir_normalized and qir_counts[gate] > 0:
                 extra.append(gate)
 

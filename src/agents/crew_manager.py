@@ -4,13 +4,40 @@ import logging
 import re
 from typing import Optional
 
+from crewai.hooks import before_tool_call, ToolCallHookContext
+
 from .translation_agent import TranslationAgent
 from .verification_agent import VerificationAgent
-from ..tools.rag_tool import RAGTool
+from ..tools.qir_search_tool import QIRSearchTool
 from ..tools.gate_counter_tool import GateCounterTool
 from ..tools.web_fetch_tool import get_web_tools
 
 logger = logging.getLogger(__name__)
+
+# ── Dedup tool hook: prevent identical consecutive tool calls ──────────────────
+# Smaller models (e.g. llama3.1-8b) tend to call the same search tool 5+ times
+# with the exact same query, wasting iterations. This hook blocks duplicates.
+
+_recent_tool_queries: dict[str, str] = {}  # tool_name -> last query string
+
+
+@before_tool_call
+def _dedup_tool_calls(context: ToolCallHookContext) -> bool | None:
+    """Block repeated identical tool calls that waste agent iterations."""
+    query = str(context.tool_input.get("query", "") or
+                context.tool_input.get("search_query", "") or
+                context.tool_input.get("url", ""))
+    if not query:
+        return None  # Allow non-query tools
+
+    last = _recent_tool_queries.get(context.tool_name)
+    if last == query:
+        logger.info("Dedup hook: blocking duplicate %s call with query=%r",
+                     context.tool_name, query[:80])
+        return False  # Block duplicate call
+
+    _recent_tool_queries[context.tool_name] = query
+    return None  # Allow
 
 # Namespace prefixes that belong to standard MLIR dialects — excluded from
 # unknown-dialect detection.
@@ -43,15 +70,15 @@ class CrewManager:
         self.max_iterations = max_iterations
         self.verbose = verbose
 
-        # Tools
-        self.rag_tool = RAGTool(knowledge_base=knowledge_base)
+        # Tools — lightweight search replaces heavy ChromaDB RAG
+        self.qir_search_tool = QIRSearchTool()
         self.gate_counter_tool = GateCounterTool()
         self.web_tools = get_web_tools()
 
-        # Agents (translation starts with only RAG; web tools attached on demand)
+        # Agents (translation gets search tool; context is injected inline in prompt)
         self.translation_agent = TranslationAgent(
             llm=llm,
-            tools=[self.rag_tool],
+            tools=[self.qir_search_tool],
             verbose=verbose,
         )
         self.verification_agent = VerificationAgent(
@@ -119,6 +146,14 @@ class CrewManager:
                 qir_code = self.translation_agent.translate_with_feedback(
                     mlir_code, dialect=detected_dialect, iteration=1
                 )
+                if not qir_code or not qir_code.strip():
+                    result.error_message = (
+                        "LLM did not produce valid QIR (likely emitted a tool-call "
+                        "JSON instead of LLVM IR). Try a different model or use the "
+                        "deterministic path."
+                    )
+                    logger.error(result.error_message)
+                    return result
                 result.translation_path = "ai_agent"
             except Exception as e:
                 result.error_message = f"Agentic translation failed: {e}"
@@ -202,17 +237,24 @@ class CrewManager:
             logger.info(f"Feedback for iteration {iteration + 1}:\n{feedback_str}")
             previous_qir = qir_code
 
-            if is_known:
+            if is_known and not force_agentic:
                 result.translation_path = "deterministic+repair"
 
             try:
-                qir_code = self.translation_agent.translate_with_feedback(
+                new_qir = self.translation_agent.translate_with_feedback(
                     mlir_code,
                     dialect=detected_dialect,
                     feedback=feedback_str,
                     previous_qir=previous_qir,
                     iteration=iteration + 1,
                 )
+                if new_qir and new_qir.strip():
+                    qir_code = new_qir
+                else:
+                    logger.warning(
+                        "Iteration %d produced empty QIR (tool-call JSON?); "
+                        "retrying with previous QIR", iteration + 1
+                    )
             except Exception as e:
                 logger.error(f"Agent repair failed on iteration {iteration + 1}: {e}")
                 break
@@ -331,27 +373,6 @@ class CrewManager:
                 current_names.add(tool.name)
         self.translation_agent.agent.tools = current
         logger.debug(f"Translation agent tools: {[t.name for t in current]}")
-
-    def _run_with_crew_memory(self, translation_task, verification_task):
-        """Run translation+verification wrapped in a Crew with persistent Memory.
-
-        Used for HITL retries so the agent recalls user-provided documentation
-        URLs and content across sessions (LanceDB-backed CrewAI Memory).
-        """
-        try:
-            from crewai import Crew, Process
-            from crewai.memory import Memory
-            crew = Crew(
-                agents=[self.translation_agent.agent, self.verification_agent.agent],
-                tasks=[translation_task, verification_task],
-                process=Process.sequential,
-                memory=Memory(llm=self.llm),
-                verbose=self.verbose,
-            )
-            return crew.kickoff()
-        except Exception as e:
-            logger.warning("Crew+Memory kickoff failed (%s); falling back to direct task execution", e)
-            return self.translation_agent.agent.execute_task(translation_task)
 
     @staticmethod
     def _infer_dialect_hint(mlir_code: str) -> str:

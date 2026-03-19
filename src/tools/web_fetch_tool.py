@@ -70,7 +70,6 @@ def get_web_tools() -> list:
         # Fall back to our lightweight implementation
         try:
             from crewai.tools import BaseTool
-            from pydantic import Field
 
             class _WebFetch(BaseTool):
                 name: str = "Read website content"

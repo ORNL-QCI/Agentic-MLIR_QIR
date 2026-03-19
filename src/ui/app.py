@@ -12,6 +12,10 @@ sys.path.insert(0, str(project_root / 'src'))
 import json
 import logging
 import os
+from dotenv import load_dotenv
+
+# Load .env file (tokens, config) — .env is in .gitignore, safe from commits
+load_dotenv(project_root / ".env")
 
 # Disable CrewAI telemetry BEFORE any crewai import.
 # CrewAI telemetry registers OS signal handlers which fail in Streamlit's
@@ -67,7 +71,7 @@ def initialize_session_state():
     if 'mlir_input' not in st.session_state:
         st.session_state.mlir_input = ""
     if 'selected_model' not in st.session_state:
-        st.session_state.selected_model = "llama3.1:8b"
+        st.session_state.selected_model = "llama3.1-8b"
     if 'session_id' not in st.session_state:
         st.session_state.session_id = uuid.uuid4().hex[:8]
 
@@ -171,7 +175,6 @@ def render_sidebar():
 **Use Case:** {model_info.recommended_for}
         """)
     elif model_info.provider == "huggingface":
-        import os
         hf_token_set = bool(os.environ.get(model_info.api_key_env))
         token_status = "✅ HF_TOKEN found" if hf_token_set else "⚠️ Set `HF_TOKEN` env var (free at huggingface.co/settings/tokens)"
         st.sidebar.info(f"""
@@ -183,7 +186,6 @@ def render_sidebar():
 **Token:** {token_status}
         """)
     else:
-        import os
         api_key_set = bool(os.environ.get(model_info.api_key_env))
         key_status = "✅ API key found" if api_key_set else f"⚠️ Set `{model_info.api_key_env}` env var"
         free_note = "Free tier available" if model_info.free_tier else "Paid API"
@@ -474,7 +476,8 @@ def _run_agentic_pipeline(
 
                             st.info("Retrying translation with updated knowledge base …")
                             _run_agentic_pipeline(
-                                mlir_input, result.dialect or detected_dialect, config, time.time()
+                                mlir_input, result.dialect or detected_dialect, config, time.time(),
+                                run_info_file=run_info_file,
                             )
 
 

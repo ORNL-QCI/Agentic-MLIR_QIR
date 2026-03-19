@@ -52,7 +52,7 @@ class LLMConfig:
             quality='good',
             speed='fast',
             recommended_for='development, testing',
-            ollama_name='llama3.1:8b-instruct',
+            ollama_name='llama3.1:8b',
             provider='ollama',
         ),
         'codellama-13b': ModelInfo(
@@ -62,7 +62,7 @@ class LLMConfig:
             quality='very good',
             speed='medium',
             recommended_for='code-heavy tasks',
-            ollama_name='codellama:13b',
+            ollama_name='codellama:13b-instruct',
             provider='ollama',
         ),
         'codellama-34b-q4': ModelInfo(
