@@ -32,8 +32,8 @@ cb[3] = measure q[6];
 ## Quake MLIR
 
 ```mlir
-module attributes {quake.mangled_name_map = {__nvqpp__mlirgen____nvqppBuilderKernel_2LPH2QFX8F = "__nvqpp__mlirgen____nvqppBuilderKernel_2LPH2QFX8F_PyKernelEntryPointRewrite"}} {
-  func.func @__nvqpp__mlirgen____nvqppBuilderKernel_2LPH2QFX8F() attributes {"cudaq-entrypoint", "cudaq-kernel"} {
+module attributes {quake.mangled_name_map = {__nvqpp__mlirgen____nvqppBuilderKernel_4EST6TURAJ = "__nvqpp__mlirgen____nvqppBuilderKernel_4EST6TURAJ_PyKernelEntryPointRewrite"}} {
+  func.func @__nvqpp__mlirgen____nvqppBuilderKernel_4EST6TURAJ() attributes {"cudaq-entrypoint", "cudaq-kernel"} {
     %0 = quake.alloca !quake.veq<7>
     %c4_i64 = arith.constant 4 : i64
     %1 = quake.extract_ref %0[%c4_i64] : (!quake.veq<7>, i64) -> !quake.ref
@@ -107,7 +107,7 @@ source_filename = "LLVMDialectModule"
 %Qubit = type opaque
 %Result = type opaque
 
-define void @__nvqpp__mlirgen____nvqppBuilderKernel_2LPH2QFX8F() local_unnamed_addr {
+define void @__nvqpp__mlirgen____nvqppBuilderKernel_4EST6TURAJ() local_unnamed_addr {
   %1 = tail call %Array* @__quantum__rt__qubit_allocate_array(i64 7)
   %2 = tail call %Qubit** @__quantum__rt__array_get_element_ptr_1d(%Array* %1, i64 4)
   %3 = load %Qubit*, %Qubit** %2, align 8

@@ -3,7 +3,7 @@
 ## Project: MLIR to QIR Quantum Circuit Translator
 **Status**: ✅ Production Ready
 **Implementation Time**: Complete end-to-end system
-**Total Code**: 3,766 lines across 33 Python modules
+**Total Code**: 4,500+ lines across 35+ Python modules
 
 ---
 
@@ -56,7 +56,9 @@
 **Status**: COMPLETE (real execution implemented)
 
 ### Implemented Components:
-- ✅ Simulator registry (pluggable backend system)
+- ✅ **SimulatorRegistry** — extensible backend registry with `can_handle(dialect)` dispatch
+  - `find_runner_for_dialect(dialect)` dynamically selects the right backend
+  - New backends register via `SimulatorRegistry.register(name, cls)`
 - ✅ **QIRRunner** — real execution via `qirrunner 0.9.1` (qir-alliance Python package)
   - Pre-built wheel, no LLVM required
   - Auto-injects terminal measurements for circuits without explicit `mz` calls
@@ -68,12 +70,13 @@
 - ✅ Gate counter (measurements excluded from gate totals for fair comparison)
 - ✅ Verification metrics (TVD similarity)
 - ✅ Full verification pipeline wired to Streamlit UI
+- ✅ **Unseen dialect fallback** — when no MLIR backend exists, MLIR execution (Level 3) is skipped; verification uses QIR execution + gate counting only
 
 ### Verification Methods:
 1. **Structural**: Gate count (exact; measurements excluded from totals)
 2. **QIR Execution**: `qirrunner` package — real sparse quantum state simulator
-3. **MLIR Execution**: PennyLane Catalyst `@catalyst.qjit` — real JIT execution
-4. **Statistical**: TVD similarity ≥ 95%
+3. **MLIR Execution**: Dialect-specific backend via `SimulatorRegistry` (Catalyst, Quake, or extensible)
+4. **Statistical**: TVD similarity ≥ 95% (skipped for unseen dialects with no MLIR backend)
 
 ### Measured Results (1,000 shots, real execution):
 | Circuit | TVD Similarity | Status |
@@ -93,6 +96,7 @@
 - ✅ RAG Tool (knowledge base retrieval for agents)
 - ✅ Gate Counter Tool (verification for agents)
 - ✅ Simulation Tool (multi-backend execution)
+- ✅ **SimulatorDiscoveryTool** — searches for simulators for unseen dialects; persistent JSON cache at `data/discovered_simulators.json` so dialects are only unseen once
 
 ### Agent Capabilities:
 - **Translation Agent**: RAG-enhanced context, pattern matching, QIR generation
@@ -170,8 +174,8 @@
 ## 📊 Final Statistics
 
 ### Code Metrics:
-- **Total Lines**: 3,900+ lines of production code
-- **Python Modules**: 34 files (added `catalyst_runner.py`)
+- **Total Lines**: 4,500+ lines of production code
+- **Python Modules**: 35+ files
 - **Test Files**: Complete Phase 1 test suite
 - **Documentation**: Comprehensive README with examples
 
@@ -187,9 +191,9 @@ src/
 ├── parsers/         (1 file)   - MLIR parser
 ├── generators/      (2 files)  - QIR generator & templates
 ├── agents/          (3 files)  - CrewAI multi-agent system
-├── tools/           (3 files)  - Agent tools
+├── tools/           (4 files)  - Agent tools (incl. SimulatorDiscoveryTool)
 ├── rag/             (4 files)  - RAG system
-├── verification/    (5 files)  - Multi-backend verification
+├── verification/    (6 files)  - Multi-backend verification (extensible registry)
 └── ui/              (1 file)   - Streamlit interface
 
 scripts/             (3 files)  - Setup scripts
@@ -328,7 +332,8 @@ Beyond original requirements:
 The architecture supports easy addition of:
 
 - New MLIR dialects (inherit from `BaseDialect`)
-- New verification backends (inherit from `BaseRunner`)
+- New verification backends (inherit from `BaseRunner`, implement `can_handle(dialect)`)
+- Unseen dialect simulators (auto-discovered and cached via `SimulatorDiscoveryTool`)
 - New LLM models (add to `llm_config.py`)
 - New verification metrics (extend `VerificationMetrics`)
 - New UI components (Streamlit modules)
@@ -382,6 +387,6 @@ The MLIR to QIR Quantum Circuit Translator is:
 - ✅ Extensible
 - ✅ Tested
 
-Total implementation: **3,766 lines of high-quality Python code** across **33 modules**.
+Total implementation: **4,500+ lines of high-quality Python code** across **35+ modules**.
 
 Ready to translate quantum circuits! 🚀

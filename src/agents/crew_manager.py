@@ -11,6 +11,7 @@ from .verification_agent import VerificationAgent
 from ..tools.qir_search_tool import QIRSearchTool
 from ..tools.gate_counter_tool import GateCounterTool
 from ..tools.web_fetch_tool import get_web_tools
+from ..tools.simulator_discovery_tool import get_simulator_discovery_tool
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class CrewManager:
         self.qir_search_tool = QIRSearchTool()
         self.gate_counter_tool = GateCounterTool()
         self.web_tools = get_web_tools()
+        self.simulator_discovery_tool = get_simulator_discovery_tool()
 
         # Agents (translation gets search tool; context is injected inline in prompt)
         self.translation_agent = TranslationAgent(
@@ -362,15 +364,16 @@ class CrewManager:
         return "\n".join(parts) if parts else "Unknown verification failure."
 
     def _attach_web_tools(self) -> None:
-        """Append web-search tools to the translation agent (idempotent)."""
-        if not self.web_tools:
-            return
+        """Append web-search and simulator discovery tools to the translation agent (idempotent)."""
         current = list(self.translation_agent.agent.tools or [])
         current_names = {t.name for t in current}
         for tool in self.web_tools:
             if tool.name not in current_names:
                 current.append(tool)
                 current_names.add(tool.name)
+        if self.simulator_discovery_tool and self.simulator_discovery_tool.name not in current_names:
+            current.append(self.simulator_discovery_tool)
+            current_names.add(self.simulator_discovery_tool.name)
         self.translation_agent.agent.tools = current
         logger.debug(f"Translation agent tools: {[t.name for t in current]}")
 

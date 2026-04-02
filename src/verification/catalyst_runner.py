@@ -9,7 +9,7 @@ Falls back to physics-correct mock when the runtime is unavailable.
 import logging
 import warnings
 from itertools import product
-from typing import Dict
+from typing import Dict, Optional
 
 from .simulator_registry import BaseRunner, SimulatorRegistry
 
@@ -31,6 +31,9 @@ class CatalystRunner(BaseRunner):
     @property
     def name(self) -> str:
         return "catalyst"
+
+    def can_handle(self, dialect: str) -> bool:
+        return dialect.lower() == "catalyst"
 
     def is_available(self) -> bool:
         """Check if PennyLane + Catalyst are importable."""
@@ -93,6 +96,90 @@ class CatalystRunner(BaseRunner):
             logger.warning(f"Real Catalyst execution failed: {e} — falling back to mock")
             self._last_run_was_mock = True
             return self._mock_run(mlir_code, shots)
+
+    # ------------------------------------------------------------------
+    # Exact probability mode (no shot noise)
+    # ------------------------------------------------------------------
+
+    def run_probs(self, mlir_code: str) -> Optional[Dict[str, float]]:
+        """Return exact probability distribution via qml.probs() — zero shot noise.
+
+        Only supported for non-conditional circuits (no mid-circuit measurements).
+        Returns None if execution fails or circuit has conditionals.
+        """
+        if not self.is_available():
+            return None
+
+        try:
+            return self._real_run_probs(mlir_code)
+        except Exception as e:
+            logger.warning(f"Exact probs execution failed: {e}")
+            return None
+
+    def _real_run_probs(self, mlir_code: str) -> Dict[str, float]:
+        """Execute via PennyLane with qml.probs() — returns exact probabilities."""
+        warnings.filterwarnings('ignore')
+        import catalyst
+        import pennylane as qml
+        import numpy as np
+        from src.parsers.mlir_parser import MLIRParser
+
+        parsed = MLIRParser().parse(mlir_code)
+        n = parsed.num_qubits
+        if n == 0:
+            raise ValueError("Parsed circuit has 0 qubits")
+
+        if parsed.has_conditionals:
+            raise ValueError("run_probs() does not support conditional circuits")
+
+        ordered_ops = parsed.ordered_ops or []
+        dev = qml.device('lightning.qubit', wires=n)
+
+        def apply_gate(gate):
+            name, qubits, params = gate.name, gate.qubits, gate.params
+            if   name == 'Hadamard':   qml.Hadamard(qubits[0])
+            elif name == 'PauliX':     qml.PauliX(qubits[0])
+            elif name == 'PauliY':     qml.PauliY(qubits[0])
+            elif name == 'PauliZ':     qml.PauliZ(qubits[0])
+            elif name == 'S':          qml.S(qubits[0])
+            elif name == 'T':          qml.T(qubits[0])
+            elif name == 'Sdg':        qml.adjoint(qml.S)(wires=[qubits[0]])
+            elif name == 'Tdg':        qml.adjoint(qml.T)(wires=[qubits[0]])
+            elif name == 'RX':         qml.RX(params[0], qubits[0])
+            elif name == 'RY':         qml.RY(params[0], qubits[0])
+            elif name == 'RZ':         qml.RZ(params[0], qubits[0])
+            elif name == 'PhaseShift': qml.PhaseShift(params[0], qubits[0])
+            elif name == 'CNOT':       qml.CNOT(wires=qubits)
+            elif name == 'CZ':         qml.CZ(wires=qubits)
+            elif name == 'CY':         qml.CY(wires=qubits)
+            elif name == 'SWAP':       qml.SWAP(wires=qubits)
+            elif name == 'Toffoli':    qml.Toffoli(wires=qubits)
+            elif name == 'CSWAP':      qml.CSWAP(wires=qubits)
+
+        measured_wires = (
+            [m.qubit for m in parsed.measurements]
+            if parsed.measurements
+            else list(range(n))
+        )
+
+        @catalyst.qjit
+        @qml.qnode(dev)
+        def run_circuit():
+            for op_type, op_data in ordered_ops:
+                if op_type == 'gate':
+                    apply_gate(op_data)
+            return qml.probs(wires=measured_wires)
+
+        probs_array = np.array(run_circuit())
+        n_wires = len(measured_wires)
+
+        # Convert probability array to {bitstring: probability} dict
+        dist: Dict[str, float] = {}
+        for i, p in enumerate(probs_array):
+            if p > 1e-12:  # skip negligible probabilities
+                bs = format(i, f'0{n_wires}b')
+                dist[bs] = float(p)
+        return dist
 
     # ------------------------------------------------------------------
     # Real execution via PennyLane Catalyst

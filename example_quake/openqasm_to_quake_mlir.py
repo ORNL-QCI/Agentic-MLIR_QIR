@@ -70,6 +70,257 @@ cx q[0], q[4];
 c = measure q;
 """
 
+code_ghz_10 = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+// Registers
+qubit[10] q;
+bit[10] c;
+
+// 10-qubit GHZ state
+h q[0];
+cx q[0], q[1];
+cx q[0], q[2];
+cx q[0], q[3];
+cx q[0], q[4];
+cx q[0], q[5];
+cx q[0], q[6];
+cx q[0], q[7];
+cx q[0], q[8];
+cx q[0], q[9];
+
+// Measure all qubits
+c = measure q;
+"""
+
+code_ghz_15 = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+// Registers
+qubit[15] q;
+bit[15] c;
+
+// 15-qubit GHZ state
+h q[0];
+cx q[0], q[1];
+cx q[0], q[2];
+cx q[0], q[3];
+cx q[0], q[4];
+cx q[0], q[5];
+cx q[0], q[6];
+cx q[0], q[7];
+cx q[0], q[8];
+cx q[0], q[9];
+cx q[0], q[10];
+cx q[0], q[11];
+cx q[0], q[12];
+cx q[0], q[13];
+cx q[0], q[14];
+
+// Measure all qubits
+c = measure q;
+"""
+
+code_ghz_20 = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+// Registers
+qubit[20] q;
+bit[20] c;
+
+// 20-qubit GHZ state
+h q[0];
+cx q[0], q[1];
+cx q[0], q[2];
+cx q[0], q[3];
+cx q[0], q[4];
+cx q[0], q[5];
+cx q[0], q[6];
+cx q[0], q[7];
+cx q[0], q[8];
+cx q[0], q[9];
+cx q[0], q[10];
+cx q[0], q[11];
+cx q[0], q[12];
+cx q[0], q[13];
+cx q[0], q[14];
+cx q[0], q[15];
+cx q[0], q[16];
+cx q[0], q[17];
+cx q[0], q[18];
+cx q[0], q[19];
+
+// Measure all qubits
+c = measure q;
+"""
+
+code_ghz_25 = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+// Registers
+qubit[25] q;
+bit[25] c;
+
+// 25-qubit GHZ state
+h q[0];
+cx q[0], q[1];
+cx q[0], q[2];
+cx q[0], q[3];
+cx q[0], q[4];
+cx q[0], q[5];
+cx q[0], q[6];
+cx q[0], q[7];
+cx q[0], q[8];
+cx q[0], q[9];
+cx q[0], q[10];
+cx q[0], q[11];
+cx q[0], q[12];
+cx q[0], q[13];
+cx q[0], q[14];
+cx q[0], q[15];
+cx q[0], q[16];
+cx q[0], q[17];
+cx q[0], q[18];
+cx q[0], q[19];
+cx q[0], q[20];
+cx q[0], q[21];
+cx q[0], q[22];
+cx q[0], q[23];
+cx q[0], q[24];
+
+// Measure all qubits
+c = measure q;
+"""
+
+
+def _ghz_qasm(n: int) -> str:
+    """Generate OpenQASM 3.0 for an N-qubit GHZ state."""
+    cx_lines = "\n".join(f"cx q[0], q[{i}];" for i in range(1, n))
+    return (
+        f"OPENQASM 3.0;\n"
+        f"include \"stdgates.inc\";\n\n"
+        f"// Registers\n"
+        f"qubit[{n}] q;\n"
+        f"bit[{n}] c;\n\n"
+        f"// {n}-qubit GHZ state\n"
+        f"h q[0];\n"
+        f"{cx_lines}\n\n"
+        f"// Measure all qubits\n"
+        f"c = measure q;\n"
+    )
+
+
+code_ghz_30 = _ghz_qasm(30)
+code_ghz_100 = _ghz_qasm(100)
+
+code_mbqc_teleport = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+qubit[2] q;
+bit[2] c;
+
+h q[1];
+cz q[0], q[1];
+h q[0];
+
+c[0] = measure q[0];
+if (c[0] == true) {
+  x q[1];
+}
+
+h q[1];
+c[1] = measure q[1];
+"""
+
+code_mbqc_rotation_rz = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+qubit[2] q;
+bit[2] c;
+
+h q[1];
+cz q[0], q[1];
+rz(pi/4) q[0];
+h q[0];
+
+c[0] = measure q[0];
+if (c[0] == true) {
+  x q[1];
+}
+
+h q[1];
+c[1] = measure q[1];
+"""
+
+code_mbqc_rotation_rx = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+qubit[3] q;
+bit[3] m;
+
+h q[1];
+h q[2];
+
+cz q[0], q[1];
+cz q[1], q[2];
+
+h q[0];
+m[0] = measure q[0];
+
+rz(pi/4) q[1];
+h q[1];
+m[1] = measure q[1];
+
+rx(-1.5707963) q[2];
+
+if (m[0] == true) {
+  x q[2];
+}
+if (m[1] == true) {
+  z q[2];
+}
+m[2] = measure q[2];
+"""
+
+code_mbqc_cnot = """\
+OPENQASM 3.0;
+include "stdgates.inc";
+
+qubit[4] q;
+bit[3] m;
+
+h q[2];
+h q[3];
+
+cz q[0], q[2];
+cz q[1], q[2];
+cz q[2], q[3];
+
+h q[1];
+m[0] = measure q[1];
+
+h q[2];
+m[1] = measure q[2];
+
+if (m[0] == true) {
+  z q[0];
+}
+if (m[1] == true) {
+  x q[3];
+}
+if (m[0] == true) {
+  z q[3];
+}
+m[2] = measure q[3];
+"""
+
 code_random_circuit_6994 = """\
 OPENQASM 3.0;
 include "stdgates.inc";
@@ -246,6 +497,31 @@ def qasm3_to_cudaq_kernel(qasm_str: str):
 
     lines = [strip_comment(l) for l in qasm_str.splitlines()]
     lines = [l for l in lines if l]
+
+    # ── Pre-process: flatten multi-line if blocks to single-line form ────────
+    # Converts:  if (c[0] == true) { \n  x q[1]; \n }
+    # To:        if (c[0] == 1) x q[1];
+    flat_lines: list[str] = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Match "if (...) {" opening block
+        m_if = re.match(
+            r'if\s*\(\s*(\w+)\[(\d+)\]\s*==\s*(true|1)\s*\)\s*\{', line)
+        if m_if:
+            breg, bi = m_if.group(1), m_if.group(2)
+            # Collect body lines until closing brace
+            i += 1
+            while i < len(lines) and lines[i] != '}':
+                body = lines[i].rstrip(';').strip()
+                if body:
+                    flat_lines.append(f'if ({breg}[{bi}] == 1) {body};')
+                i += 1
+            i += 1  # skip '}'
+            continue
+        flat_lines.append(line)
+        i += 1
+    lines = flat_lines
 
     # ── Pass 1: collect register declarations ─────────────────────────────────
     qubit_regs: dict[str, tuple[int, int]] = {}   # name → (size, global_offset)

@@ -1,5 +1,5 @@
-module attributes {quake.mangled_name_map = {__nvqpp__mlirgen____nvqppBuilderKernel_AUGR21F7HS = "__nvqpp__mlirgen____nvqppBuilderKernel_AUGR21F7HS_PyKernelEntryPointRewrite"}} {
-  func.func @__nvqpp__mlirgen____nvqppBuilderKernel_AUGR21F7HS() attributes {"cudaq-entrypoint", "cudaq-kernel"} {
+module attributes {quake.mangled_name_map = {__nvqpp__mlirgen____nvqppBuilderKernel_HGPTUGMAAI = "__nvqpp__mlirgen____nvqppBuilderKernel_HGPTUGMAAI_PyKernelEntryPointRewrite"}} {
+  func.func @__nvqpp__mlirgen____nvqppBuilderKernel_HGPTUGMAAI() attributes {"cudaq-entrypoint", "cudaq-kernel"} {
     %0 = quake.alloca !quake.veq<4>
     %c0_i64 = arith.constant 0 : i64
     %1 = quake.extract_ref %0[%c0_i64] : (!quake.veq<4>, i64) -> !quake.ref

@@ -28,6 +28,9 @@ class QuakeRunner(BaseRunner):
     def name(self) -> str:
         return "quake"
 
+    def can_handle(self, dialect: str) -> bool:
+        return dialect.lower() == "quake"
+
     # ── availability ──────────────────────────────────────────────────────────
 
     def is_available(self) -> bool:

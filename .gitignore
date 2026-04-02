@@ -34,6 +34,7 @@ MANIFEST
 # Data & Models
 data/chromadb/
 data/cache/
+data/discovered_simulators.json
 chroma_db/
 logs/
 *.ckpt
@@ -92,8 +93,26 @@ model_cache/
 Thumbs.db
 Desktop.ini
 
-# Claude Code plans
+# QIR runner test files (local testing only)
+test_qir/
+
+# Claude Code (plans, traces, logs, settings)
+.claude/
 .claude/plans/
+.claude/projects/
+.claude/logs/
+.claude/settings.local.json
+
+# Experiment results (regenerate with experiments/run_*.sh)
+experiments/results/
+experiments/analysis-output/
+
+# Runtime run info logs (auto-generated)
+example_run_info/
+
+# Temporary plan files
+temp/
+plan/
 
 # Generated docs
 docs/
@@ -115,3 +134,4 @@ docs/*.vrb
 docs/*.pdf
 # LaTeX Workshop output subdirectory
 docs/%OUTDIR%/
+

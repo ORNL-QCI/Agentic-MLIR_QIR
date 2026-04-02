@@ -80,6 +80,25 @@ def compute_distribution_similarity(dist1: Dict[str, int],
     return similarity
 
 
+def compute_similarity_from_probs(probs1: Dict[str, float],
+                                   probs2: Dict[str, float]) -> float:
+    """Compute TVD similarity from exact probability distributions (no shot noise).
+
+    Args:
+        probs1: First probability distribution (values sum to ~1.0)
+        probs2: Second probability distribution (values sum to ~1.0)
+
+    Returns:
+        Similarity score between 0 and 1 (1.0 = identical distributions)
+    """
+    all_outcomes = set(probs1.keys()) | set(probs2.keys())
+    tvd = 0.5 * sum(
+        abs(probs1.get(outcome, 0.0) - probs2.get(outcome, 0.0))
+        for outcome in all_outcomes
+    )
+    return 1.0 - tvd
+
+
 def compute_kl_divergence(dist1: Dict[str, int],
                           dist2: Dict[str, int]) -> float:
     """Compute KL divergence between two distributions.

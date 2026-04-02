@@ -336,7 +336,7 @@ Dialect Detection
     │
     ├─── Known (Catalyst/Quake) ──► Deterministic Parser ──► QIR Generator ──┐
     │                                                                          │
-    └─── Unknown ──► WebFetchTool (fetch dialect spec) ──► TranslationAgent ──┤
+    └─── Unseen ──► SimulatorDiscoveryTool + WebFetchTool ──► TranslationAgent ──┤
                           + RAGTool (local docs)                               │
                                                                                ▼
                                                                     Verification Pipeline
@@ -356,7 +356,7 @@ Dialect Detection
 | Path | When |
 |------|------|
 | `deterministic` | Known dialect, passes on first try |
-| `ai_agent` | Unknown dialect — agent translates |
+| `ai_agent` | Unseen dialect — agent translates |
 | `deterministic+repair` | Known dialect fails verify; agent repairs |
 
 ---
@@ -495,7 +495,7 @@ python translate.py circuit.mlir --json | jq -r '.qir' > circuit.ll
 |-----------|---------|
 | `0` | Translation verified |
 | `1` | Verification failed / error |
-| `2` | Unknown dialect — use `--model` |
+| `2` | Unseen dialect — use `--model` |
 | `130` | Ctrl-C |
 
 ---
@@ -742,8 +742,9 @@ Bell State result: **MLIR: `{h:1, cnot:1}` = QIR: `{h:1, cnot:1}`** → ✅ MATC
 | **Agent Framework** | **CrewAI 1.10.0** | Multi-agent orchestration (upgraded from 0.28.8) |
 | **LLM — local** | Ollama | Llama 3.1 8B/70B, CodeLlama 13B/34B |
 | **LLM — cloud** | HuggingFace Inference API | `gpt-oss-20b` (free tier, no GPU) |
-| **Web tools** | `WebFetchTool` / `ScrapeWebsiteTool` | Unknown-dialect spec research |
-| **Verification** | `pipeline.py` | Shared `run_verification_pipeline()` |
+| **Web tools** | `WebFetchTool` / `ScrapeWebsiteTool` | Unseen-dialect spec research |
+| **Simulator discovery** | `SimulatorDiscoveryTool` | Find & cache simulators for unseen dialects |
+| **Verification** | `pipeline.py` | Shared `run_verification_pipeline()` — extensible via `SimulatorRegistry` |
 | **RAG / Vector DB** | ChromaDB + SentenceTransformers | Context-aware retrieval |
 | **Source IRs** | MLIR (Catalyst + Quake dialects) | Input formats |
 | **Target IR** | QIR 1.0 (LLVM IR) | Output format |
@@ -770,7 +771,8 @@ agentic_mlir_qir_updated/
 │   ├── tools/
 │   │   ├── rag_tool.py      ← ChromaDB knowledge retrieval
 │   │   ├── gate_counter_tool.py
-│   │   └── web_fetch_tool.py ← WebFetchTool + get_web_tools()
+│   │   ├── web_fetch_tool.py ← WebFetchTool + get_web_tools()
+│   │   └── simulator_discovery_tool.py ← find/cache simulators for unseen dialects
 │   ├── config/
 │   │   └── llm_config.py    ← Ollama + HuggingFace + OpenAI model configs
 │   ├── rag/                 ← ChromaDB, embeddings, knowledge chunking
@@ -853,7 +855,7 @@ python example_quake/openqasm_to_quake_mlir.py
 | **CLI** | `translate.py` — file/stdin/`--json`/`--model`/`-o` |
 | **LLM backends** | Ollama (local GPU) **or** HuggingFace API (free, no GPU) |
 | **Free cloud model** | `gpt-oss-20b` — 20B, Apache 2.0, HF Inference API |
-| **AI agents** | CrewAI 1.10 · RAG (ChromaDB) · WebFetchTool |
+| **AI agents** | CrewAI 1.10 · RAG (ChromaDB) · WebFetchTool · SimulatorDiscoveryTool |
 
 <br>
 

@@ -1,5 +1,7 @@
-# Research Paper Experiment Plan
+# Research Paper Experiment Plan (Original Draft)
 # Agentic LLM-Aided Translation of Quantum Intermediate Representations with Automated Verification
+
+> **Note:** This is the original experiment plan. See [QCE2026_EXPERIMENT_PLAN.md](QCE2026_EXPERIMENT_PLAN.md) for the final experiment design with runner scripts.
 
 **Created:** 2026-03-18
 **Codebase:** agentic_mlir_qir_updated
@@ -23,17 +25,17 @@
 
 ---
 
-## E2 — Multi-Dialect Coverage & Unknown Dialect Handling
+## E2 — Multi-Dialect Coverage & Unseen Dialect Handling
 
 **RQ:** How does the system handle dialects beyond Catalyst and Quake?
 
 | Dimension | Detail |
 |-----------|--------|
-| Dialects | Catalyst (known), Quake (known), 2-3 synthetic "unknown" dialects (hand-craft MLIR with invented namespace, e.g. `myq.h`, `myq.cx`) |
-| Paths | Deterministic (expected: exit code 2 for unknown), agentic with web tools |
+| Dialects | Catalyst (known), Quake (known), 2-3 synthetic "unseen" dialects (hand-craft MLIR with invented namespace, e.g. `myq.h`, `myq.cx`) |
+| Paths | Deterministic (expected: exit code 2 for unseen), agentic with web tools + SimulatorDiscoveryTool |
 | Models | `llama3.1-8b`, `codellama-13b` |
 | Metrics | Success/fail, exit code, whether agent found relevant docs, TVD if translation produced |
-| Key insight | Demonstrates graceful degradation + agent's web-research capability for novel dialects |
+| Key insight | Demonstrates graceful degradation + agent's web-research and simulator discovery capability for unseen dialects |
 
 ---
 
@@ -103,7 +105,7 @@
 |-----------|--------|
 | Method | Compare agentic runs with KB populated vs. empty ChromaDB |
 | Setup | (a) `python scripts/initialize_db.py` then translate, (b) wipe ChromaDB, translate same circuits |
-| Circuits | All 14 examples + 2 unknown-dialect synthetics |
+| Circuits | All 14 examples + 2 unseen-dialect synthetics |
 | Metrics | TVD similarity delta, iteration count delta, qualitative QIR diff |
 | Plot | Paired bar chart: with-KB vs without-KB TVD per circuit |
 

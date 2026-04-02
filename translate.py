@@ -470,6 +470,14 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--mode", choices=["shots", "probs"], default="shots",
+        help=(
+            "Verification mode: 'shots' for shot-based sampling (default), "
+            "'probs' for exact probability comparison (zero shot noise). "
+            "Probs mode uses qml.probs() on MLIR side and 100K shots on QIR side."
+        ),
+    )
+    p.add_argument(
         "--no-verify", action="store_true",
         help="Skip quantum simulation verification (gate comparison still shown)",
     )
@@ -551,13 +559,23 @@ def main() -> int:
     t0 = time.time()
     try:
         if args.model:
-            if args.no_verify:
-                result = _run_agentic_no_verify(mlir_code, args.model, args.max_iterations)
-            else:
-                result = _run_agentic(
-                    mlir_code, args.model, args.max_iterations, args.shots,
-                    force_agentic=args.force_agentic,
-                )
+            # Suppress CrewAI verbose output when --json is requested
+            _saved_stdout = None
+            if args.json or args.quiet:
+                _saved_stdout = sys.stdout
+                sys.stdout = open(os.devnull, 'w')
+            try:
+                if args.no_verify:
+                    result = _run_agentic_no_verify(mlir_code, args.model, args.max_iterations)
+                else:
+                    result = _run_agentic(
+                        mlir_code, args.model, args.max_iterations, args.shots,
+                        force_agentic=args.force_agentic,
+                    )
+            finally:
+                if _saved_stdout is not None:
+                    sys.stdout.close()
+                    sys.stdout = _saved_stdout
         else:
             try:
                 result = _run_deterministic(mlir_code)
@@ -579,7 +597,8 @@ def main() -> int:
                 if not args.quiet and not args.json:
                     print("Running simulation verification…", file=meta_stream)
                 result["verification_result"] = run_verification_pipeline(
-                    mlir_code, result["qir_code"], shots=args.shots
+                    mlir_code, result["qir_code"],
+                    shots=args.shots, mode=args.mode,
                 )
 
     except KeyboardInterrupt:

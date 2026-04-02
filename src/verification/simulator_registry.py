@@ -47,6 +47,25 @@ class BaseRunner(ABC):
         """
         pass
 
+    def run_probs(self, code: str) -> Optional[Dict[str, float]]:
+        """Return exact probability distribution (no shot noise).
+
+        Override in subclasses that support state-vector simulation.
+        Returns None if not supported by this backend.
+
+        Returns:
+            Dictionary mapping measurement outcomes to exact probabilities
+            Example: {"00": 0.5, "11": 0.5}
+        """
+        return None
+
+    def can_handle(self, dialect: str) -> bool:
+        """Check if this backend can execute circuits from the given MLIR dialect.
+
+        Override in subclasses. Default returns False.
+        """
+        return False
+
 
 class SimulatorRegistry:
     """Registry for quantum simulator backends."""
@@ -132,6 +151,23 @@ class SimulatorRegistry:
                 continue
 
         return available
+
+    @classmethod
+    def find_runner_for_dialect(cls, dialect: str) -> Optional[BaseRunner]:
+        """Find an available runner that can handle the given MLIR dialect.
+
+        Returns the first available runner whose can_handle(dialect) is True,
+        or None if no matching runner is found.
+        """
+        for name, backend_class in cls._backends.items():
+            try:
+                instance = backend_class()
+                if instance.can_handle(dialect) and instance.is_available():
+                    cls._instances[name] = instance
+                    return instance
+            except Exception:
+                continue
+        return None
 
     @classmethod
     def get_status(cls) -> Dict[str, Dict]:

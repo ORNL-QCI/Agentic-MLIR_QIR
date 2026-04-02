@@ -309,7 +309,7 @@ class TranslationAgent:
         Returns:
             Generated QIR code string.
         """
-        dialect_is_unknown = dialect is None or dialect.lower() == "unknown"
+        dialect_is_unknown = dialect is None or dialect.lower() in ("unknown", "unseen")
         dialect_info = f" ({dialect} dialect)" if dialect and not dialect_is_unknown else ""
 
         # ---- Build task description ----------------------------------------
@@ -317,10 +317,15 @@ class TranslationAgent:
 
         if dialect_is_unknown:
             parts.append(
-                "UNRECOGNIZED DIALECT DETECTED.\n\n"
-                "If you have a 'Read website content' tool available, use it to fetch "
-                "documentation for the namespace prefixes you see in the code below. "
-                "Otherwise, use the gate mapping reference provided below to translate "
+                "UNSEEN DIALECT DETECTED.\n\n"
+                "This MLIR dialect is not yet recognized by the system. Follow these steps:\n"
+                "1. If you have a 'Search for quantum simulator' tool, use it with the "
+                "dialect name to find a matching simulator for verification. If you discover "
+                "one via web search, register it using the tool's register: format so it is "
+                "remembered for future runs.\n"
+                "2. If you have a 'Read website content' tool, use it to fetch "
+                "documentation for the namespace prefixes you see in the code below.\n"
+                "3. Use the gate mapping reference provided below to translate "
                 "any gates you can identify.\n\n"
             )
 

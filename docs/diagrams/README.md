@@ -53,8 +53,8 @@ High-level component diagram showing:
 ### 1. Plugin Architecture
 The system uses extensible plugin patterns for:
 - **Dialects**: New MLIR dialects can be added by implementing `BaseDialect`
-- **Runners**: New execution backends via `BaseRunner`
-- **Tools**: Agent tools can be registered dynamically
+- **Runners**: New execution backends via `BaseRunner` with `can_handle(dialect)` dispatch
+- **Tools**: Agent tools can be registered dynamically (including `SimulatorDiscoveryTool` for unseen dialects)
 
 ### 2. Multi-Agent Pattern
 - **CrewManager**: Orchestrates multiple specialized agents
@@ -75,11 +75,12 @@ The system uses extensible plugin patterns for:
 
 ## System Statistics
 
-- **Total Code**: 3,766 lines
-- **Modules**: 33 Python modules
-- **Dialects**: 2 (Catalyst, Quake) + extensible
-- **Verification Levels**: 4
-- **LLM Models**: 3 supported (8B, 13B, 70B)
+- **Total Code**: 4,500+ lines
+- **Modules**: 35+ Python modules
+- **Dialects**: 2 (Catalyst, Quake) + extensible via `SimulatorRegistry` and `SimulatorDiscoveryTool`
+- **Verification Levels**: 4 (Level 3 skipped for unseen dialects with no MLIR backend)
+- **LLM Models**: 5+ supported (8B, 13B, 20B cloud, 34B, 70B)
+- **Agent Tools**: 4 (RAG, GateCounter, WebFetch, SimulatorDiscovery)
 - **Knowledge Sources**: 5 (QIR specs, Catalyst, CUDA Quantum, papers, examples)
 
 ## Component Responsibilities
@@ -107,7 +108,7 @@ The system uses extensible plugin patterns for:
 ## Technology Stack
 
 - **UI**: Streamlit
-- **LLM**: Ollama (Llama 3.1, CodeLlama)
+- **LLM**: Ollama (Llama 3.1, CodeLlama) + HuggingFace API (gpt-oss-20b)
 - **Vector DB**: ChromaDB
 - **Embeddings**: sentence-transformers (HuggingFace)
 - **Quantum**: PennyLane Catalyst, CUDA Quantum, Qiskit

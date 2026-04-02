@@ -33,6 +33,9 @@ class QIRRunner(BaseRunner):
     def name(self) -> str:
         return "qir-runner"
 
+    def can_handle(self, dialect: str) -> bool:
+        return dialect.lower() == "qir"
+
     def is_available(self) -> bool:
         """Check if qirrunner is installed WITHOUT importing it into this process.
 
