@@ -113,7 +113,7 @@ def _log_translation(
 
 
 def load_examples():
-    """Load example MLIR circuits (Catalyst + Quake dialects)."""
+    """Load example MLIR circuits (Catalyst, Quake, and FTQC dialects)."""
     examples = {}
 
     for file_path in sorted(Path("examples/mlir").glob("*.mlir")):
@@ -123,10 +123,29 @@ def load_examples():
         except Exception as e:
             logger.error(f"Error loading {file_path}: {e}")
 
+    # Catalyst root examples
+    for file_path in sorted(Path("example/catalyst_mlir").glob("*.mlir")):
+        try:
+            stem = file_path.stem.replace("code_", "").replace("_", " ").title()
+            name = f"[Catalyst] {stem}"
+            if name not in examples:
+                examples[name] = file_path.read_text()
+        except Exception as e:
+            logger.error(f"Error loading {file_path}: {e}")
+
     for file_path in sorted(Path("examples/quake_mlir").glob("*.mlir")):
         try:
             stem = file_path.stem.replace("code_", "").replace("_", " ").title()
             name = f"[Quake] {stem}"
+            examples[name] = file_path.read_text()
+        except Exception as e:
+            logger.error(f"Error loading {file_path}: {e}")
+
+    # FTQC (unseen dialect) examples
+    for file_path in sorted(Path("example/ftqc_mlir").glob("*.mlir")):
+        try:
+            stem = file_path.stem.replace("_", " ").title()
+            name = f"[FTQC] {stem}"
             examples[name] = file_path.read_text()
         except Exception as e:
             logger.error(f"Error loading {file_path}: {e}")
@@ -224,11 +243,23 @@ def render_sidebar():
         ),
     )
 
+    verification_mode = st.sidebar.selectbox(
+        "Verification",
+        options=["Full (simulation + gate check)", "Gate comparison only", "None (skip verification)"],
+        index=0,
+        help=(
+            "Full: run dual-backend simulation and compare distributions via TVD. "
+            "Gate only: compare gate counts without simulation (faster). "
+            "None: skip all verification (fastest, translation only)."
+        ),
+    )
+
     return {
         'model': selected_model,
         'max_iterations': max_iterations,
         'verbose': verbose,
         'force_agentic': force_agentic,
+        'verification_mode': verification_mode,
     }
 
 
@@ -287,6 +318,7 @@ def _run_deterministic_translation(
         },
         'timestamp': datetime.now().isoformat(),
         'translation_time_s': elapsed,
+        'verification_time_s': 0.0,
         'iterations': 1,
         'translation_path': 'deterministic',
         'verification_result': None,
@@ -395,6 +427,7 @@ def _run_agentic_pipeline(
         'circuit_info': circuit_info,
         'timestamp': datetime.now().isoformat(),
         'translation_time_s': elapsed,
+        'verification_time_s': 0.0,  # updated by verification section if run on-demand
         'iterations': result.iterations,
         'translation_path': result.translation_path,
         'verification_result': result.verification_result,
@@ -486,14 +519,24 @@ def _run_agentic_pipeline(
 # ------------------------------------------------------------------ #
 
 def _is_valid_mlir(text: str) -> bool:
-    """Heuristic: require at least 2 MLIR structural indicators."""
+    """Heuristic: require at least 2 MLIR structural indicators.
+
+    Supports known dialects (Catalyst, Quake) and unseen dialects that
+    use standard MLIR structural keywords (module, func.func, etc.).
+    """
     indicators = [
-        'module', 'func.func', 'quantum.', 'quake.', '!quantum',
+        'module', 'func.func', 'func.return',
+        'quantum.', 'quake.', '!quantum', '!quake',
         'qnode', 'catalyst.', 'llvm.emit_c_interface',
         '@__quantum', 'quantum.alloc', 'quantum.custom',
+        # Unseen dialect support: any MLIR with module + func is valid input
+        'ftqc.', 'oq3.', 'stim.', 'quil.',
     ]
     matched = sum(1 for s in indicators if s in text)
-    return len(text.strip()) >= 30 and matched >= 2
+    # Accept if it has at least 2 structural indicators, OR if it has
+    # module + func.func (standard MLIR structure for any dialect)
+    has_mlir_structure = 'module' in text and ('func.func' in text or 'func @' in text)
+    return len(text.strip()) >= 30 and (matched >= 2 or has_mlir_structure)
 
 
 # ------------------------------------------------------------------ #
@@ -536,9 +579,10 @@ def render_translation_section(config):
         if not _is_valid_mlir(mlir_input):
             st.error(
                 "Input does not appear to be a valid MLIR quantum circuit. "
-                "Please paste MLIR code in Catalyst or Quake dialect."
+                "Please paste MLIR code (Catalyst, Quake, or any MLIR dialect with "
+                "`module` and `func.func` structure)."
             )
-            st.info("Example: paste the contents of `examples/mlir/bell_state.mlir`")
+            st.info("Example: paste the contents of `examples/mlir/bell_state.mlir` or `example/ftqc_mlir/steane_1q_h.mlir`")
             st.stop()
 
         with st.spinner("Translating... This may take a minute."):
@@ -560,10 +604,14 @@ def render_translation_section(config):
                         dialect_is_known = False
 
                     # Routing: fast deterministic path vs full agentic pipeline
+                    # Deterministic when: known dialect, not forced to LLM, and
+                    # either max_iterations=1 or no model change needed.
+                    # The CrewManager handles the hybrid path (deterministic +
+                    # repair) internally when max_iterations > 1.
                     use_deterministic = (
                         dialect_is_known
-                        and config['max_iterations'] == 1
                         and not config.get('force_agentic', False)
+                        and config['max_iterations'] == 1
                     )
                     if use_deterministic:
                         _run_deterministic_translation(mlir_input, detected_dialect, t0,
@@ -571,6 +619,12 @@ def render_translation_section(config):
                     else:
                         _run_agentic_pipeline(mlir_input, detected_dialect, config, t0,
                                               run_info_file=_log_path.name)
+
+                    # Store verification mode setting for the verification section
+                    if st.session_state.translation_result:
+                        st.session_state.translation_result['verification_mode_setting'] = (
+                            config.get('verification_mode', 'Full (simulation + gate check)')
+                        )
 
                 except Exception as e:
                     st.error(f"Translation error: {str(e)}")
@@ -595,16 +649,20 @@ def render_translation_section(config):
                 mime="text/plain",
             )
 
-            # Metrics row: Translation Time | Iterations | Translation Path
-            t_col1, t_col2, t_col3 = st.columns(3)
+            # Metrics row: Translation Time | Verification Time | Iterations | Path
+            t_col1, t_col2, t_col3, t_col4 = st.columns(4)
             with t_col1:
-                elapsed = st.session_state.translation_result.get('translation_time_s', 0)
-                time_str = f"{elapsed * 1000:.1f}ms" if elapsed < 1.0 else f"{elapsed:.2f}s"
-                st.metric("Translation Time", time_str)
+                t_time = st.session_state.translation_result.get('translation_time_s', 0)
+                t_str = f"{t_time * 1000:.1f}ms" if t_time < 1.0 else f"{t_time:.2f}s"
+                st.metric("Translation Time", t_str)
             with t_col2:
+                v_time = st.session_state.translation_result.get('verification_time_s', 0)
+                v_str = f"{v_time * 1000:.1f}ms" if v_time < 1.0 else f"{v_time:.2f}s"
+                st.metric("Verification Time", v_str)
+            with t_col3:
                 iters = st.session_state.translation_result.get('iterations', 1)
                 st.metric("Iterations", iters)
-            with t_col3:
+            with t_col4:
                 path = st.session_state.translation_result.get('translation_path', 'deterministic')
                 path_label = {
                     'deterministic': 'Deterministic',
@@ -765,17 +823,43 @@ def render_verification_section():
             st.text(f"{i}. {gate}")
 
     # ---- Verification Results ----
+    verify_mode = result.get('verification_mode_setting', 'Full (simulation + gate check)')
     with st.expander("🔬 Verification Results", expanded=True):
-        if result.get('verification_ran') and result.get('verification_result'):
+        if verify_mode == "None (skip verification)":
+            st.info("Verification was skipped (set in sidebar settings).")
+        elif result.get('verification_ran') and result.get('verification_result'):
             # Pre-computed during agentic pipeline — just display
             _render_verification_data(result['verification_result'])
+        elif verify_mode == "Gate comparison only":
+            # Gate check only — no simulation
+            mlir_code = st.session_state.mlir_input
+            qir_code = result['qir_code']
+            tv0 = time.time()
+            from src.verification.gate_counter import GateCounter
+            gc = GateCounter()
+            mlir_gates = gc.count_mlir_gates(mlir_code)
+            mlir_gates.pop('measure', None)
+            mlir_gates.pop('mz', None)
+            qir_gates = gc.count_qir_gates(qir_code)
+            qir_gates.pop('measure', None)
+            comparison = gc.compare(mlir_gates, qir_gates)
+            v_elapsed = time.time() - tv0
+            result['verification_time_s'] = v_elapsed
+            if comparison.get('matches'):
+                st.success(f"PASS — Gate counts match ({comparison.get('mlir_total', 0)} gates)")
+            else:
+                st.warning("MISMATCH — Gate counts differ")
+                for d in comparison.get('discrepancies', []):
+                    st.text(f"  {d['gate']}: MLIR={d['mlir_count']}, QIR={d['qir_count']}")
         else:
-            # On-demand for fast deterministic path (max_iterations=1, known dialect)
+            # Full verification on-demand
             mlir_code = st.session_state.mlir_input
             qir_code = result['qir_code']
             with st.spinner("Running simulation verification..."):
+                tv0 = time.time()
                 from src.verification.pipeline import run_verification_pipeline
                 vr = run_verification_pipeline(mlir_code, qir_code, shots=1000)
+                result['verification_time_s'] = time.time() - tv0
             _render_verification_data(vr)
 
 
@@ -786,13 +870,13 @@ def render_footer():
     with col1:
         st.markdown("**🎯 Features:**")
         st.markdown("- Multi-dialect support")
-        st.markdown("- RAG-enhanced translation")
-        st.markdown("- Real-time verification")
+        st.markdown("- Context-engineered LLM translation")
+        st.markdown("- Dual-backend verification (TVD)")
     with col2:
         st.markdown("**📚 Supported Dialects:**")
         st.markdown("- PennyLane Catalyst")
-        st.markdown("- NVIDIA CUDA Quantum")
-        st.markdown("- Unknown dialects (AI Agent)")
+        st.markdown("- NVIDIA CUDA Quantum (Quake)")
+        st.markdown("- Unseen dialects (agentic path)")
     with col3:
         st.markdown("**🔗 Links:**")
         st.markdown("[QIR Specification](https://github.com/qir-alliance/qir-spec)")

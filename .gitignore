@@ -117,21 +117,29 @@ plan/
 # Generated docs
 docs/
 
-# LaTeX paper folder
-2026_QCE_mlir_to_qir/
-
-# LaTeX auxiliary files
-docs/*.aux
-docs/*.fdb_latexmk
-docs/*.fls
-docs/*.log
-docs/*.nav
-docs/*.out
-docs/*.snm
-docs/*.synctex.gz
-docs/*.toc
-docs/*.vrb
-docs/*.pdf
+# LaTeX auxiliary files (keep .tex and .bib, ignore build artifacts)
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
 # LaTeX Workshop output subdirectory
-docs/%OUTDIR%/
+%OUTDIR%/
+
+# GitLab CI artifacts
+.gitlab-ci-local/
+
+# Ollama model cache (large, not needed in repo)
+.ollama/
+
+# Python type checker cache
+.mypy_cache/
+.pytype/
+.ruff_cache/
 

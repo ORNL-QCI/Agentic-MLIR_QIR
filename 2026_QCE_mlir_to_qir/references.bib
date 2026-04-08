@@ -1,0 +1,496 @@
+% ============================================================
+% Foundational Compiler Infrastructure
+% ============================================================
+
+@inproceedings{lattner2004llvm,
+  author    = {Chris Lattner and Vikram Adve},
+  title     = {{LLVM}: A Compilation Framework for Lifelong Program
+               Analysis \& Transformation},
+  booktitle = {Proceedings of the International Symposium on Code
+               Generation and Optimization (CGO)},
+  pages     = {75--86},
+  year      = {2004},
+  organization = {IEEE}
+}
+
+@inproceedings{lattner2021mlir,
+  author    = {Chris Lattner and Mehdi Amini and Uday Bondhugula and
+               Albert Cohen and Andy Davis and Jacques Pienaar and
+               River Riddle and Tatiana Shpeisman and Nicolas Vasilache
+               and Oleksandr Zinenko},
+  title     = {{MLIR}: Scaling Compiler Infrastructure for Domain
+               Specific Computation},
+  booktitle = {Proceedings of the IEEE/ACM International Symposium on
+               Code Generation and Optimization (CGO)},
+  year      = {2021},
+  pages     = {2--14},
+  doi       = {10.1109/CGO51591.2021.9370308}
+}
+
+% ============================================================
+% Quantum Intermediate Representations
+% ============================================================
+
+@misc{qirspec2021,
+  author       = {{QIR Alliance}},
+  title        = {{QIR} Specification: Quantum Intermediate Representation},
+  year         = {2021},
+  howpublished = {\url{https://github.com/qir-alliance/qir-spec}},
+  note         = {Accessed: 2026-03-01}
+}
+
+@article{cross2022openqasm3,
+  author  = {Andrew W. Cross and Ali Javadi-Abhari and Thomas Alexander
+             and Niel de Beaudrap and Lev S. Bishop and Steven Heidel
+             and Colm A. Ryan and Prasahnt Sivarajah and John Smolin
+             and Jay M. Gambetta and Blake R. Johnson},
+  title   = {{OpenQASM 3}: A Broader and Deeper Quantum Assembly Language},
+  journal = {ACM Transactions on Quantum Computing},
+  volume  = {3},
+  number  = {3},
+  pages   = {1--50},
+  year    = {2022},
+  doi     = {10.1145/3505636}
+}
+
+@article{ittah2022qiro,
+  author  = {David Ittah and Thomas H{\"a}ner and Vadym Kliuchnikov
+             and Torsten Hoefler},
+  title   = {{QIRO}: A Static Single Assignment-based Quantum Program
+             Representation for Optimization},
+  journal = {ACM Transactions on Quantum Computing},
+  volume  = {3},
+  number  = {3},
+  pages   = {1--32},
+  year    = {2022},
+  doi     = {10.1145/3491247}
+}
+
+@article{cardama2025review,
+  author  = {F. J. Cardama and J. V{\'a}zquez-P{\'e}rez and C. Pi{\~n}eiro
+             and J. C. Pichel and T. F. Pena and A. G{\'o}mez},
+  title   = {Review of intermediate representations for quantum computing},
+  journal = {The Journal of Supercomputing},
+  volume  = {81},
+  number  = {418},
+  year    = {2025},
+  doi     = {10.1007/s11227-024-06892-2}
+}
+
+@misc{singhal2024formal,
+  author  = {Junjie Luo and Jianjun Zhao},
+  title   = {Formalization of Quantum Intermediate Representations},
+  year    = {2023},
+  eprint  = {2303.14500},
+  archivePrefix = {arXiv},
+  primaryClass  = {quant-ph},
+  note    = {arXiv:2303.14500}
+}
+
+% ============================================================
+% Quantum Computing Frameworks and MLIR Dialects
+% ============================================================
+
+@inproceedings{ittah2024catalyst,
+  author    = {David Ittah and Ali Asadi and Erick Ochoa Lopez and
+               Sergei Mironov and Samuel Banning and Romain Moyard
+               and Mai Jacob Peng and Josh Izaac},
+  title     = {Catalyst: a {P}ython {JIT} Compiler for Auto-Differentiable
+               Hybrid Quantum Programs},
+  journal   = {Journal of Open Source Software},
+  volume    = {9},
+  number    = {99},
+  pages     = {6720},
+  year      = {2024},
+  doi       = {10.21105/joss.06720}
+}
+
+@inproceedings{mccaskey2021mlirdialect,
+  author    = {Alexander McCaskey and Thien Nguyen},
+  title     = {A {MLIR} Dialect for Quantum Assembly Languages},
+  booktitle = {Proceedings of the IEEE International Conference on
+               Quantum Computing and Engineering (QCE)},
+  pages     = {255--264},
+  year      = {2021},
+  doi       = {10.1109/QCE52317.2021.00043}
+}
+
+@inproceedings{kim2023cudaquantum,
+  author    = {Jin-Sung Kim and Alex McCaskey and Bettina Heim and
+               Manish Modani and Sam Stanwyck and Timothy Costa},
+  title     = {{CUDA Quantum}: The Platform for Integrated
+               Quantum-Classical Computing},
+  booktitle = {Proceedings of the 60th ACM/IEEE Design Automation
+               Conference (DAC)},
+  pages     = {1--4},
+  year      = {2023},
+  doi       = {10.1109/DAC56929.2023.10247886}
+}
+
+@inproceedings{hopf2026integrating,
+  author    = {Patrick Hopf and Erick Ochoa Lopez and Yannick Stade and
+               Damian Rovara and Nils Quetschlich and Ioan Albert Florea
+               and Josh Izaac and Robert Wille and Lukas Burgholzer},
+  title     = {Integrating Quantum Software Tools with(in) {MLIR}},
+  booktitle = {Proceedings of Supercomputing Asia and International
+               Conference on High Performance Computing in Asia Pacific Region},
+  year      = {2026},
+  doi       = {10.1145/3773656.3773658},
+  note      = {arXiv:2601.02062}
+}
+
+@article{bergholm2022pennylane,
+  author  = {Ville Bergholm and Josh Izaac and Maria Schuld and
+             Christian Gogolin and M. Sohaib Alam and Shahnawaz Ahmed
+             and Juan Miguel Arrazola and Carsten Blank and Alain Delgado
+             and Soran Jahangiri and others},
+  title   = {{PennyLane}: Automatic Differentiation of Hybrid
+             Quantum-Classical Computations},
+  journal = {arXiv preprint arXiv:1811.04968},
+  year    = {2022}
+}
+
+@article{javadi2024qiskit,
+  author  = {Ali Javadi-Abhari and Matthew Treinish and Kevin Krsulich
+             and Christopher J. Wood and Jake Lishman and Julien Gacon
+             and Simon Martiel and Paul D. Nation and Lev S. Bishop
+             and Andrew W. Cross and Blake R. Johnson and Jay M. Gambetta},
+  title   = {Quantum Computing with {Qiskit}},
+  journal = {arXiv preprint arXiv:2405.08810},
+  year    = {2024}
+}
+
+@software{cirq2024,
+  author    = {{Cirq Developers}},
+  title     = {Cirq},
+  year      = {2024},
+  publisher = {Zenodo},
+  version   = {1.4.1},
+  doi       = {10.5281/zenodo.11398180}
+}
+
+@article{svore2018qsharp,
+  author  = {Krysta Svore and Alan Geller and Matthias Troyer and
+             John Azariah and Christopher Granade and Bettina Heim
+             and Vadym Kliuchnikov and Mariia Mykhailova and Andres Paz
+             and Martin Roetteler},
+  title   = {{Q\#}: Enabling Scalable Quantum Computing and Development
+             with a High-Level {DSL}},
+  journal = {Proceedings of the Real World Domain Specific Languages
+             Workshop},
+  year    = {2018},
+  doi     = {10.1145/3183895.3183901}
+}
+
+@article{mccaskey2020xacc,
+  author    = {Alexander J. McCaskey and Dmitry I. Lyakh and
+               Eugene F. Dumitrescu and Sarah S. Powers and Travis S. Humble},
+  title     = {{XACC}: A System-Level Software Infrastructure for
+               Heterogeneous Quantum--Classical Computing},
+  journal   = {Quantum Science and Technology},
+  volume    = {5},
+  number    = {2},
+  pages     = {024002},
+  year      = {2020},
+  doi       = {10.1088/2058-9565/ab6bf6}
+}
+
+@article{heim2020quantum,
+  author    = {Bettina Heim and Mathias Soeken and Sarah Marshall
+               and Chris Granade and Martin Roetteler and Alan Geller
+               and Matthias Troyer and Krysta Svore},
+  title     = {Quantum Programming Languages},
+  journal   = {Nature Reviews Physics},
+  volume    = {2},
+  number    = {12},
+  pages     = {709--722},
+  year      = {2020},
+  publisher = {Nature Publishing Group UK London}
+}
+
+% ============================================================
+% NISQ Era and Quantum Computing Landscape
+% ============================================================
+
+@article{preskill2018quantum,
+  author    = {John Preskill},
+  title     = {Quantum Computing in the {NISQ} Era and Beyond},
+  journal   = {Quantum},
+  volume    = {2},
+  pages     = {79},
+  year      = {2018},
+  doi       = {10.22331/q-2018-08-06-79}
+}
+
+@book{nielsen2010quantum,
+  author    = {Michael A. Nielsen and Isaac L. Chuang},
+  title     = {Quantum Computation and Quantum Information: 10th
+               Anniversary Edition},
+  publisher = {Cambridge University Press},
+  year      = {2010},
+  isbn      = {9781107002173}
+}
+
+% ============================================================
+% LLMs for Code Generation and Translation
+% ============================================================
+
+@article{chen2021codex,
+  author  = {Mark Chen and Jerry Tworek and Heewoo Jun and Qiming Yuan
+             and Henrique Ponde de Oliveira Pinto and Jared Kaplan
+             and Harri Edwards and Yuri Burda and Nicholas Joseph
+             and Greg Brockman and others},
+  title   = {Evaluating Large Language Models Trained on Code},
+  journal = {arXiv preprint arXiv:2107.03374},
+  year    = {2021}
+}
+
+@article{achiam2023gpt4,
+  author  = {Josh Achiam and Steven Adler and Sandhini Agarwal and
+             Lama Ahmad and Ilge Akkaya and Florencia Leoni Aleman
+             and Diogo Almeida and Janko Altenschmidt and Sam Altman
+             and Shyamal Anadkat and others},
+  title   = {{GPT-4} Technical Report},
+  journal = {arXiv preprint arXiv:2303.08774},
+  year    = {2023}
+}
+
+@article{roziere2023codellama,
+  author  = {Baptiste Rozi{\`e}re and Jonas Gehring and Fabian Gloeckle
+             and Sten Sootla and Itai Gat and Xiaoqing Ellen Tan
+             and Yossi Adi and Jingyu Liu and Romain Sauvestre
+             and Tal Remez and others},
+  title   = {{Code Llama}: Open Foundation Models for Code},
+  journal = {arXiv preprint arXiv:2308.12950},
+  year    = {2023}
+}
+
+@article{dubey2024llama3,
+  author  = {Abhimanyu Dubey and Abhinav Jauhri and Abhinav Pandey
+             and Abhishek Kadian and Ahmad Al-Dahle and Aiesha Letman
+             and others},
+  title   = {The {Llama 3} Herd of Models},
+  journal = {arXiv preprint arXiv:2407.21783},
+  year    = {2024}
+}
+
+@article{li2022alphacode,
+  author    = {Yujia Li and David Choi and Junyoung Chung and Nate Kushman
+               and Julian Schrittwieser and R{\'e}mi Leblond and Tom Eccles
+               and James Keeling and Felix Gimeno and Agustin Dal Lago
+               and others},
+  title     = {Competition-Level Code Generation with {AlphaCode}},
+  journal   = {Science},
+  volume    = {378},
+  number    = {6624},
+  pages     = {1092--1097},
+  year      = {2022},
+  publisher = {American Association for the Advancement of Science}
+}
+
+@inproceedings{szafraniec2023code,
+  author    = {Marc Szafraniec and Baptiste Rozi{\`e}re and Hugh Leather
+               and Fran{\c{c}}ois Charton and Patrick Labatut
+               and Gabriel Synnaeve},
+  title     = {Code Translation with Compiler Representations},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2023},
+  note      = {arXiv:2207.03578}
+}
+
+@article{austin2021program,
+  author  = {Jacob Austin and Augustus Odena and Maxwell Nye and
+             Maarten Bosma and Henryk Michalewski and David Dohan
+             and Ellen Jiang and Carrie Cai and Michael Terry
+             and Quoc Le and others},
+  title   = {Program Synthesis with Large Language Models},
+  journal = {arXiv preprint arXiv:2108.07732},
+  year    = {2021}
+}
+
+% ============================================================
+% LLMs for Quantum Computing
+% ============================================================
+
+@inproceedings{dupuis2024qiskitassistant,
+  author    = {Nicolas Dupuis and Luca Buratti and Sanjay Vishwakarma
+               and Aitana Viudes Forrat and David Kremer and Ismael Faro
+               and Ruchir Puri and Juan Cruz-Benito},
+  title     = {Qiskit Code Assistant: Training {LLMs} for Generating
+               Quantum Computing Code},
+  booktitle = {2024 IEEE LLM Aided Design Workshop (LAD)},
+  pages     = {1--4},
+  year      = {2024},
+  organization = {IEEE}
+}
+
+@inproceedings{jern2025agentq,
+  author    = {Linus Jern and Valter Uotila and Cong Yu and Bo Zhao},
+  title     = {Agent-{Q}: Fine-Tuning Large Language Models for Quantum
+               Circuit Generation and Optimization},
+  booktitle = {2025 IEEE International Conference on Quantum Computing
+               and Engineering (QCE)},
+  year      = {2025},
+  organization = {IEEE}
+}
+
+% ============================================================
+% Multi-Agent Systems and Agentic AI
+% ============================================================
+
+@misc{hong2024crewai,
+  author       = {Jo{\~a}o Moura},
+  title        = {{CrewAI}: Framework for Orchestrating Role-Playing
+                  Autonomous {AI} Agents},
+  year         = {2024},
+  howpublished = {\url{https://github.com/crewAIInc/crewAI}},
+  note         = {Version 1.10.0}
+}
+
+@article{wu2023autogen,
+  author  = {Qingyun Wu and Gagan Bansal and Jieyu Zhang and Yiran Wu
+             and Beibin Li and Erkang Zhu and Li Jiang and Xiaoyun Zhang
+             and Shaokun Zhang and Jiale Liu and Ahmed Hassan Awadallah
+             and Ryen W. White and Doug Burger and Chi Wang},
+  title   = {{AutoGen}: Enabling Next-Gen {LLM} Applications via
+             Multi-Agent Conversation},
+  journal = {arXiv preprint arXiv:2308.08155},
+  year    = {2023}
+}
+
+@article{wang2024agentsurvey,
+  author  = {Junwei Wang and others},
+  title   = {Large Language Model-Based Agents for Software Engineering:
+             A Survey},
+  journal = {arXiv preprint arXiv:2409.02977},
+  year    = {2024}
+}
+
+@inproceedings{yao2023react,
+  author    = {Shunyu Yao and Jeffrey Zhao and Dian Yu and Nan Du and
+               Izhak Shafran and Karthik Narasimhan and Yuan Cao},
+  title     = {{ReAct}: Synergizing Reasoning and Acting in
+               Language Models},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2023}
+}
+
+@article{shinn2023reflexion,
+  author  = {Noah Shinn and Federico Cassano and Ashwin Gopinath
+             and Karthik Narasimhan and Shunyu Yao},
+  title   = {Reflexion: Language Agents with Verbal Reinforcement Learning},
+  journal = {Advances in Neural Information Processing Systems},
+  volume  = {36},
+  pages   = {8634--8652},
+  year    = {2023}
+}
+
+@article{wei2022chainofthought,
+  author  = {Jason Wei and Xuezhi Wang and Dale Schuurmans and
+             Maarten Bosma and Brian Ichter and Fei Xia and Ed Chi
+             and Quoc Le and Denny Zhou},
+  title   = {Chain-of-Thought Prompting Elicits Reasoning in Large
+             Language Models},
+  journal = {Advances in Neural Information Processing Systems},
+  volume  = {35},
+  year    = {2022}
+}
+
+@article{lewis2020rag,
+  author  = {Patrick Lewis and Ethan Perez and Aleksandra Piktus and
+             Fabio Petroni and Vladimir Karpukhin and Naman Goyal and
+             Heinrich K{\"u}ttler and Mike Lewis and Wen-tau Yih and
+             Tim Rockt{\"a}schel and others},
+  title   = {Retrieval-Augmented Generation for Knowledge-Intensive
+             {NLP} Tasks},
+  journal = {Advances in Neural Information Processing Systems},
+  volume  = {33},
+  pages   = {9459--9474},
+  year    = {2020}
+}
+
+% ============================================================
+% Quantum Circuit Verification
+% ============================================================
+
+@inproceedings{bauer2023symqv,
+  author    = {Fabian Bauer-Marquart and Stefan Leue and
+               Christian Schilling},
+  title     = {{symQV}: Automated Symbolic Verification of
+               Quantum Programs},
+  booktitle = {Formal Methods: 25th International Symposium (FM 2023)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {14000},
+  pages     = {181--198},
+  publisher = {Springer},
+  year      = {2023},
+  doi       = {10.1007/978-3-031-27481-7_12}
+}
+
+@article{karuppasamy2025comprehensive,
+  author    = {Krishnageetha Karuppasamy and Varun Puram and
+               Stevens Johnson and Johnson P. Thomas},
+  title     = {A Comprehensive Review of Quantum Circuit Optimization:
+               Current Trends and Future Directions},
+  journal   = {Quantum Reports},
+  volume    = {7},
+  number    = {1},
+  pages     = {2},
+  year      = {2025},
+  publisher = {MDPI}
+}
+
+% ============================================================
+% Quantum Compilation and Optimization
+% ============================================================
+
+@inproceedings{javadiabhari2014scaffcc,
+  author    = {Ali JavadiAbhari and Shruti Patil and Daniel Kudrow
+               and Jeff Heckey and Alexey Lvov and Frederic T. Chong
+               and Margaret Martonosi},
+  title     = {{ScaffCC}: A Framework for Compilation and Analysis of
+               Quantum Computing Programs},
+  booktitle = {Proceedings of the 11th ACM Conference on Computing Frontiers},
+  pages     = {1--10},
+  year      = {2014}
+}
+
+@inproceedings{shi2019optimized,
+  author    = {Yunong Shi and Nelson Leung and Pranav Gokhale and
+               Zane Rossi and David I. Schuster and Henry Hoffmann
+               and Frederic T. Chong},
+  title     = {Optimized Compilation of Aggregated Instructions for
+               Realistic Quantum Computers},
+  booktitle = {Proceedings of the Twenty-Fourth International Conference
+               on Architectural Support for Programming Languages and
+               Operating Systems (ASPLOS)},
+  pages     = {1031--1044},
+  year      = {2019}
+}
+
+@article{mintz2020qcor,
+  author    = {Tiffany M. Mintz and Alexander J. McCaskey and
+               Eugene F. Dumitrescu and Shirley V. Moore and
+               Sarah Powers and Pavel Lougovski},
+  title     = {{QCOR}: A Language Extension Specification for the
+               Heterogeneous Quantum-Classical Model of Computation},
+  journal   = {ACM Journal on Emerging Technologies in Computing Systems},
+  volume    = {16},
+  number    = {2},
+  pages     = {1--17},
+  year      = {2020},
+  publisher = {ACM}
+}
+
+% ============================================================
+% ML for Compilers
+% ============================================================
+
+@article{cummins2020programl,
+  author  = {Chris Cummins and Zacharias V. Fisches and Tal Ben-Nun
+             and Torsten Hoefler and Hugh Leather},
+  title   = {{ProGraML}: Graph-based Deep Learning for Program
+             Optimization and Analysis},
+  journal = {arXiv preprint arXiv:2003.10536},
+  year    = {2020}
+}

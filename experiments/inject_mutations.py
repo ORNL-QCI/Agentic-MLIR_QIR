@@ -117,8 +117,8 @@ BATCH_CIRCUITS = [
     # (mlir_path, qir_will_be_generated)
     ("examples/mlir/bell_state.mlir", "Bell"),
     ("examples/mlir/ghz_state.mlir", "GHZ-3"),
-    ("example/catalyst_mlir/code_ghz_5.mlir", "GHZ-5"),
-    ("example/catalyst_mlir/code_ghz_10.mlir", "GHZ-10"),
+    ("example/catalyst_mlir/ghz/ghz005.mlir", "GHZ-5"),
+    ("example/catalyst_mlir/ghz/ghz010.mlir", "GHZ-10"),
     ("examples/mlir/parametric_rotation.mlir", "Parametric"),
     ("example/catalyst_mlir/code_random_circuit_658.mlir", "Random-658"),
     ("example/catalyst_mlir/code_random_circuit_3990.mlir", "Random-3990"),

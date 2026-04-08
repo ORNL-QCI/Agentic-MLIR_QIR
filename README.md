@@ -59,7 +59,10 @@ python translate.py examples/mlir/bell_state.mlir -o output.ll
 # JSON output (for scripting)
 python translate.py examples/mlir/bell_state.mlir --json
 
-# Skip verification (faster)
+# Gate comparison only (no simulation, faster)
+python translate.py examples/mlir/bell_state.mlir --gate-only
+
+# Skip all verification (fastest, translation only)
 python translate.py examples/mlir/bell_state.mlir --no-verify
 ```
 
@@ -105,7 +108,8 @@ Options:
   --max-iterations N     Max repair iterations (default: 5)
   --shots N              Simulation shots (default: 1000)
   --mode {shots,probs}   Verification mode (default: shots)
-  --no-verify            Skip simulation verification
+  --gate-only            Gate comparison only (no simulation)
+  --no-verify            Skip all verification
   --json                 JSON output for scripting/CI
   --quiet / -q           QIR only, no metadata
   --list-models          Show available model keys
@@ -158,8 +162,10 @@ agentic_mlir_qir_updated/
 │   ├── quake_mlir/               # Quake MLIR examples (via cudaq)
 │   └── qir/                      # QIR ground truth (via qiskit-qir)
 ├── example/
-│   ├── catalyst_mlir/            # Extended Catalyst examples (GHZ 5-100, MBQC, QEC)
-│   └── quake_mlir/               # Extended Quake examples (GHZ 5-100, MBQC)
+│   ├── catalyst_mlir/            # Catalyst examples (GHZ 5-100, MBQC, QEC, random)
+│   ├── quake_mlir/               # Quake examples (GHZ 5-100, MBQC, random)
+│   ├── ftqc_mlir/                # FTQC (unseen dialect) examples (Steane code)
+│   └── qir/                      # Reference QIR files (hand-written + qiskit-qir)
 ├── example_quake/
 │   └── openqasm_to_quake_mlir.py # OpenQASM 3 -> Quake MLIR converter
 ├── QIR/
@@ -197,6 +203,7 @@ ollama pull codellama:13b-instruct
 
 bash experiments/run_e3_agentic.sh        # E3: Deterministic vs Agentic vs Hybrid
 bash experiments/run_e5_llm_profiling.sh  # E5: 5-model performance comparison
+bash experiments/run_e7_unseen_dialect.sh # E7: Unseen dialect (FTQC)
 ```
 
 For E5 with all 5 models (including cloud):
@@ -219,26 +226,29 @@ Results are written to `experiments/results/` as JSONL files.
 
 | Experiment | What It Tests | LLM Needed | Time |
 |------------|--------------|------------|------|
-| E1 | Translation correctness (41 circuits, 2 dialects) | No | ~30 min |
-| E2 | Scalability (GHZ 2-100 qubits) | No | ~20 min |
+| E1 | Translation correctness (72 circuit-dialect pairs) | No | ~30 min |
+| E2 | Scalability (GHZ 5-100 qubits, 20 sizes) | No | ~20 min |
 | E3 | Deterministic vs Agentic vs Hybrid paths | Yes | ~8 hr |
 | E4 | Verification reliability (5 mutation types) | No | ~30 min |
 | E5 | LLM model profiling (5 models) | Yes | ~8 hr |
 | E6 | Cross-dialect portability (14 matched pairs) | No | ~20 min |
+| E7 | Unseen dialect translation (FTQC) | Yes | ~30 min |
 
 ## Benchmark Circuits
 
-23 unique circuits across 7 categories:
+39 unique circuits across 9 categories:
 
 | Category | Circuits | Qubits | Dialects |
 |----------|----------|--------|----------|
 | Standard (Bell, GHZ-3) | 2 | 2-3 | Both |
-| GHZ scaling | 7 (GHZ-5 to GHZ-100) | 5-100 | Both |
+| GHZ scaling | 20 (GHZ-5 to GHZ-100, every 5) | 5-100 | Both |
 | MBQC | 4 (teleport, RZ, RX, CNOT) | 2-4 | Both |
 | Conditional | 1 (teleportation) | 3 | Both |
 | Random | 5 | 2-7 | Both |
 | QEC | 1 (Steane code) | 7 | Catalyst |
 | Parametric | 1 (RX/RY/RZ) | 1 | Catalyst |
+| Variational | 1 (autodiff gradient) | 1 | Catalyst |
+| FTQC (unseen) | 4 (Steane 1Q-3Q) | 1-3 logical | FTQC only |
 
 Generate additional Quake MLIR circuits from OpenQASM:
 ```bash

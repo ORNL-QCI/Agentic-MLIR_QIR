@@ -20,9 +20,9 @@ CIRCUITS=(
   # Standard
   example/catalyst_mlir/code_bell.mlir
   # GHZ scaling (3 sizes)
-  example/catalyst_mlir/code_ghz_5.mlir
-  example/catalyst_mlir/code_ghz_10.mlir
-  example/catalyst_mlir/code_ghz_20.mlir
+  example/catalyst_mlir/ghz/ghz005.mlir
+  example/catalyst_mlir/ghz/ghz010.mlir
+  example/catalyst_mlir/ghz/ghz020.mlir
   # Conditional
   example/catalyst_mlir/code_classic_teleportation.mlir
   # MBQC
@@ -37,6 +37,9 @@ CIRCUITS=(
   example/catalyst_mlir/code_random_circuit_6994.mlir
   # QEC
   example/catalyst_mlir/steane_ft1qb.mlir
+  # Unseen dialect (FTQC — deterministic path will fail, agentic-only)
+  example/ftqc_mlir/steane_1q_h.mlir
+  example/ftqc_mlir/steane_2q_bell.mlir
 )
 
 echo "=== E3: Agentic vs. Deterministic vs. Hybrid ==="

@@ -139,7 +139,23 @@ def run_verification_pipeline(mlir_code: str, qir_code: str,
         mlir_gates.pop('mz', None)
         qir_gates = gc.count_qir_gates(qir_code)
         qir_gates.pop('measure', None)
-        result['gate_comparison'] = gc.compare(mlir_gates, qir_gates)
+
+        if dialect == "unseen" and not mlir_gates:
+            # For unseen dialects where the MLIR parser can't count gates,
+            # skip gate comparison to avoid counterproductive "remove gates"
+            # feedback. The QIR-side gate count is still reported for reference.
+            result['gate_comparison'] = {
+                'matches': True,  # Don't penalise — we can't count MLIR gates
+                'similarity': -1.0,
+                'mlir_total': 0,
+                'qir_total': sum(qir_gates.values()),
+                'discrepancies': [],
+                'mlir_gates': {},
+                'qir_gates': qir_gates,
+                'unseen_dialect': True,
+            }
+        else:
+            result['gate_comparison'] = gc.compare(mlir_gates, qir_gates)
 
         result['success'] = True
 

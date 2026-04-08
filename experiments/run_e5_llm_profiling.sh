@@ -28,15 +28,18 @@ MODELS=(
 CIRCUITS=(
   # Easy (should succeed with any model)
   example/catalyst_mlir/code_bell.mlir
-  example/catalyst_mlir/code_ghz_5.mlir
+  example/catalyst_mlir/ghz/ghz005.mlir
   # Medium
-  example/catalyst_mlir/code_ghz_10.mlir
+  example/catalyst_mlir/ghz/ghz010.mlir
   example/catalyst_mlir/code_random_circuit_658.mlir
   example/catalyst_mlir/code_random_circuit_3990.mlir
   # Hard (conditionals, diverse gates)
   example/catalyst_mlir/code_classic_teleportation.mlir
   example/catalyst_mlir/code_random_circuit_1847.mlir
   example/catalyst_mlir/steane_ft1qb.mlir
+  # Unseen dialect (FTQC — tests generalization to unknown MLIR dialects)
+  example/ftqc_mlir/steane_1q_h.mlir
+  example/ftqc_mlir/steane_2q_bell.mlir
 )
 
 echo "=== E5: LLM Model Performance Profiling ==="

@@ -146,7 +146,8 @@ class CrewManager:
             self._attach_web_tools()
             try:
                 qir_code = self.translation_agent.translate_with_feedback(
-                    mlir_code, dialect=detected_dialect, iteration=1
+                    mlir_code, dialect=detected_dialect, iteration=1,
+                    is_known_dialect=is_known,
                 )
                 if not qir_code or not qir_code.strip():
                     result.error_message = (
@@ -249,6 +250,7 @@ class CrewManager:
                     feedback=feedback_str,
                     previous_qir=previous_qir,
                     iteration=iteration + 1,
+                    is_known_dialect=is_known,
                 )
                 if new_qir and new_qir.strip():
                     qir_code = new_qir
@@ -329,7 +331,19 @@ class CrewManager:
         parts = []
 
         gate_comp = vr.get('gate_comparison', {})
-        if not gate_comp.get('matches', True):
+
+        # For unseen dialects, gate comparison is unreliable (MLIR parser can't
+        # count gates for unknown ops), so provide QIR-side info only.
+        if gate_comp.get('unseen_dialect'):
+            qir_gates = gate_comp.get('qir_gates', {})
+            if qir_gates:
+                gate_str = ", ".join(f"{g}={c}" for g, c in sorted(qir_gates.items()))
+                parts.append(
+                    f"UNSEEN DIALECT: Gate comparison unavailable (MLIR parser "
+                    f"cannot count gates for this dialect). QIR gates produced: {gate_str}. "
+                    f"Verify the translation is semantically correct by re-reading the MLIR."
+                )
+        elif not gate_comp.get('matches', True):
             parts.append("GATE COUNT MISMATCH:")
             for disc in gate_comp.get('discrepancies', []):
                 parts.append(

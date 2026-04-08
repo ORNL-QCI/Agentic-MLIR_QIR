@@ -27,12 +27,18 @@ echo ""
 # Circuits >= 50 qubits can't be simulated (state vector OOM)
 MAX_SIM_QUBITS=30
 
+# Helper: map GHZ size to zero-padded filename in ghz/ subdirectory
+ghz_file() {
+  local dialect_dir="$1" n="$2"
+  printf '%s/ghz/ghz%03d.mlir' "$dialect_dir" "$n"
+}
+
 # ── Deterministic path ───────────────────────────────────────────────────────
 echo "--- Deterministic (shots) ---"
 > "$RESULTS_DIR/deterministic_shots.jsonl"
 for n in "${GHZ_SIZES[@]}"; do
   for dialect_dir in example/catalyst_mlir example/quake_mlir; do
-    f="$dialect_dir/code_ghz_${n}.mlir"
+    f="$(ghz_file "$dialect_dir" "$n")"
     [ -f "$f" ] || continue
     dialect=$(basename "$dialect_dir" | sed 's/_mlir//')
     echo "  GHZ-${n} ($dialect) ..."
@@ -51,7 +57,7 @@ echo "--- Deterministic (probs) ---"
 > "$RESULTS_DIR/deterministic_probs.jsonl"
 for n in "${GHZ_SIZES[@]}"; do
   for dialect_dir in example/catalyst_mlir example/quake_mlir; do
-    f="$dialect_dir/code_ghz_${n}.mlir"
+    f="$(ghz_file "$dialect_dir" "$n")"
     [ -f "$f" ] || continue
     dialect=$(basename "$dialect_dir" | sed 's/_mlir//')
     echo "  GHZ-${n} ($dialect) ..."
@@ -83,7 +89,7 @@ if [ -n "$AGENTIC_MODEL" ]; then
   echo "--- Agentic ($AGENTIC_MODEL, shots) ---"
   > "$RESULTS_DIR/agentic_${AGENTIC_MODEL}.jsonl"
   for n in "${GHZ_SIZES[@]}"; do
-    f="example/catalyst_mlir/code_ghz_${n}.mlir"
+    f="$(ghz_file example/catalyst_mlir "$n")"
     [ -f "$f" ] || continue
     echo "  GHZ-${n} (catalyst, $AGENTIC_MODEL) ..."
     python translate.py "$f" --json --model "$AGENTIC_MODEL" \

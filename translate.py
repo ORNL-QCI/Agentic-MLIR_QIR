@@ -203,6 +203,7 @@ def _print_metadata(
     dialect: str,
     translation_path: str,
     translation_time_s: float,
+    verification_time_s: float = 0.0,
     iterations: int,
     gate_comparison: dict,
     verification_result: "dict | None",
@@ -224,12 +225,13 @@ def _print_metadata(
     }
     w(f"  Translation path : {path_colours.get(translation_path, translation_path)}")
 
-    time_str = (
-        f"{translation_time_s * 1000:.1f} ms"
-        if translation_time_s < 1.0
-        else f"{translation_time_s:.2f} s"
-    )
-    w(f"  Translation time : {time_str}")
+    def _fmt_time(t: float) -> str:
+        return f"{t * 1000:.1f} ms" if t < 1.0 else f"{t:.2f} s"
+
+    w(f"  Translation time : {_fmt_time(translation_time_s)}")
+    if verification_time_s > 0:
+        w(f"  Verification time: {_fmt_time(verification_time_s)}")
+        w(f"  Total time       : {_fmt_time(translation_time_s + verification_time_s)}")
     w(f"  Iterations       : {iterations}")
 
     # Gate count table
@@ -479,7 +481,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--no-verify", action="store_true",
-        help="Skip quantum simulation verification (gate comparison still shown)",
+        help="Skip all verification (no simulation, no gate comparison)",
+    )
+    p.add_argument(
+        "--gate-only", action="store_true",
+        help="Run gate comparison only (no quantum simulation). Faster than full verification.",
     )
     p.add_argument(
         "--json", action="store_true",
@@ -557,6 +563,7 @@ def main() -> int:
 
     # ── Translate ──────────────────────────────────────────────────────────────
     t0 = time.time()
+    verification_time_s = 0.0
     try:
         if args.model:
             # Suppress CrewAI verbose output when --json is requested
@@ -591,15 +598,21 @@ def main() -> int:
                     return 2
                 raise
 
-            # Deterministic path — run simulation verification unless skipped
+            # Deterministic path — run verification unless skipped
             if not args.no_verify:
-                from src.verification.pipeline import run_verification_pipeline
-                if not args.quiet and not args.json:
-                    print("Running simulation verification…", file=meta_stream)
-                result["verification_result"] = run_verification_pipeline(
-                    mlir_code, result["qir_code"],
-                    shots=args.shots, mode=args.mode,
-                )
+                tv0 = time.time()
+                if args.gate_only:
+                    # Gate comparison only — no quantum simulation
+                    result["verification_result"] = None  # no simulation
+                else:
+                    from src.verification.pipeline import run_verification_pipeline
+                    if not args.quiet and not args.json:
+                        print("Running simulation verification…", file=meta_stream)
+                    result["verification_result"] = run_verification_pipeline(
+                        mlir_code, result["qir_code"],
+                        shots=args.shots, mode=args.mode,
+                    )
+                verification_time_s = time.time() - tv0
 
     except KeyboardInterrupt:
         print("\nAborted.", file=sys.stderr)
@@ -609,6 +622,7 @@ def main() -> int:
         return 1
 
     elapsed = time.time() - t0
+    translation_time_s = elapsed - verification_time_s
 
     # ── Gate comparison ────────────────────────────────────────────────────────
     # Prefer gate data from verification_result; fall back to standalone counter.
@@ -676,7 +690,9 @@ def main() -> int:
             "qir":               qir_code,
             "dialect":           result.get("dialect", "unknown"),
             "translation_path":  result.get("translation_path", "deterministic"),
-            "translation_time_s": elapsed,
+            "translation_time_s": translation_time_s,
+            "verification_time_s": verification_time_s,
+            "total_time_s":      elapsed,
             "iterations":        result.get("iterations", 1),
             "success":           result.get("success", False),
             "error_message":     result.get("error_message"),
@@ -692,7 +708,8 @@ def main() -> int:
             meta_stream,
             dialect=result.get("dialect", "unknown"),
             translation_path=result.get("translation_path", "deterministic"),
-            translation_time_s=elapsed,
+            translation_time_s=translation_time_s,
+            verification_time_s=verification_time_s,
             iterations=result.get("iterations", 1),
             gate_comparison=gate_comparison,
             verification_result=result.get("verification_result"),

@@ -44,11 +44,11 @@ smoke "Quake Bell (shots)" \
 
 # 4. Large circuit — GHZ-30 Catalyst
 smoke "Catalyst GHZ-30" \
-  python translate.py example/catalyst_mlir/code_ghz_30.mlir --json --shots 100
+  python translate.py example/catalyst_mlir/ghz/ghz030.mlir --json --shots 100
 
 # 5. Large circuit — GHZ-100 Quake (no-verify: 100-qubit simulation is OOM)
 smoke "Quake GHZ-100 (no-verify)" \
-  python translate.py example/quake_mlir/code_ghz_100.mlir --json --no-verify
+  python translate.py example/quake_mlir/ghz/ghz100.mlir --json --no-verify
 
 # 6. Conditional — teleportation
 smoke "Catalyst teleportation" \

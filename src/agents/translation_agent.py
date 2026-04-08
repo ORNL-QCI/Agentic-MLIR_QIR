@@ -296,6 +296,7 @@ class TranslationAgent:
         feedback: Optional[str] = None,
         previous_qir: Optional[str] = None,
         iteration: int = 1,
+        is_known_dialect: bool = True,
     ) -> str:
         """Translate MLIR to QIR, optionally incorporating feedback from a prior attempt.
 
@@ -305,11 +306,16 @@ class TranslationAgent:
             feedback:      Structured failure feedback from the previous iteration.
             previous_qir:  The QIR produced in the previous iteration.
             iteration:     Current iteration number (1-based).
+            is_known_dialect: Whether the dialect was recognised by the deterministic parser.
 
         Returns:
             Generated QIR code string.
         """
-        dialect_is_unknown = dialect is None or dialect.lower() in ("unknown", "unseen")
+        dialect_is_unknown = (
+            not is_known_dialect
+            or dialect is None
+            or dialect.lower() in ("unknown", "unseen")
+        )
         dialect_info = f" ({dialect} dialect)" if dialect and not dialect_is_unknown else ""
 
         # ---- Build task description ----------------------------------------
