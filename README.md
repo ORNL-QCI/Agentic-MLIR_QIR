@@ -1,305 +1,213 @@
-# MLIR-to-QIR Quantum Circuit Translator
+# Agentic MLIR-to-QIR Translator
 
-A hybrid system that translates quantum circuits from MLIR dialects (Catalyst, Quake) to QIR using deterministic parsing, LLM-based agentic translation, and dual-backend verification.
+An open-source system for translating quantum circuits between Multi-Level
+Intermediate Representation (MLIR) dialects (Catalyst, Quake, and unseen
+dialects such as FTQC) and the Quantum Intermediate Representation (QIR).
+The system selects between three translation paths based on dialect
+recognition and verification outcomes:
 
-**Paper:** _Agentic MLIR-to-QIR Translation with Dual-Backend Verification_ (IEEE QCE 2026)
+1. **Deterministic path** — a hand-written parser plus QIR generator handles
+   dialects with known grammars (Catalyst and Quake).
+2. **Agentic path** — a large language model (LLM) agent generates QIR for
+   unseen dialects under a structured prompt, with inline context engineering
+   in place of retrieval-augmented generation.
+3. **Repair path** — when verification fails on the deterministic path, the
+   LLM agent corrects the output through a feedback loop.
 
-## What It Does
+A dual-backend verification pipeline executes the source MLIR and the
+generated QIR on independent simulators and compares the resulting bitstring
+distributions via total variation distance (TVD).
+
+This repository accompanies the paper "Agentic MLIR-to-QIR Translation with
+Verification: A Hybrid Deterministic and LLM Approach" (IEEE QCE 2026).
+
+---
+
+## Repository layout
 
 ```
-Catalyst MLIR  ──┐
-                  ├──> Deterministic Parser / LLM Agent ──> QIR (.ll)
-Quake MLIR     ──┘                                            │
-                                                              ▼
-                                              Dual-Backend Verification
-                                              (QIR Runner vs MLIR Backend)
-                                                              │
-                                                         TVD >= 95%?
-                                                          ├── Yes: PASS
-                                                          └── No: Repair loop
+.
+├── translate.py                # Main CLI entry point (MLIR file → QIR)
+├── src/                        # Source code (parsers, generators, agents, verification)
+│   └── README.md               # Code architecture
+├── experiments/                # Experiment scripts (E1, E2, E3, E4) and analysis
+│   └── README.md               # How to run each experiment
+├── example/                    # Benchmark circuit suite (38 circuits)
+│   ├── catalyst_mlir/          # Catalyst-dialect MLIR inputs
+│   ├── quake_mlir/             # Quake-dialect MLIR inputs
+│   ├── ftqc_mlir/              # FTQC-dialect MLIR inputs (unseen dialect)
+│   └── qir/                    # Reference QIR ground truth
+├── scripts/                    # Helper utilities (Qiskit-QIR ground-truth generator, Ollama setup)
+├── requirements.txt
+├── .env.example                # Template for API keys (HF_TOKEN, etc.)
+└── README.md
 ```
 
-Three translation paths:
-- **Deterministic** (fast, 100% accuracy on known dialects)
-- **Agentic** (LLM-based, for unseen dialects)
-- **Hybrid** (deterministic + LLM repair on verification failure)
+---
 
-## Quick Start
+## Quick start
 
-### Prerequisites
-
-- Python 3.12+
-- NVIDIA GPU with 8GB+ VRAM (for local LLMs; optional if using HuggingFace API)
-- [Ollama](https://ollama.com/) (for local LLM serving; optional)
-
-### Install
+### 1. Install Python dependencies
 
 ```bash
-git clone <repo-url> && cd agentic_mlir_qir_updated
-
-python -m venv venv && source venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Translate a circuit (CLI)
+### 2. Install QIR runtime
+
+The verification pipeline executes generated QIR through `qir-runner`:
 
 ```bash
-# Deterministic (no LLM needed)
-python translate.py examples/mlir/bell_state.mlir
-
-# With verification (shots mode)
-python translate.py examples/mlir/bell_state.mlir --shots 1000
-
-# With verification (exact probability mode, zero shot noise)
-python translate.py examples/mlir/bell_state.mlir --mode probs
-
-# Save QIR to file
-python translate.py examples/mlir/bell_state.mlir -o output.ll
-
-# JSON output (for scripting)
-python translate.py examples/mlir/bell_state.mlir --json
-
-# Gate comparison only (no simulation, faster)
-python translate.py examples/mlir/bell_state.mlir --gate-only
-
-# Skip all verification (fastest, translation only)
-python translate.py examples/mlir/bell_state.mlir --no-verify
+pip install qirrunner==0.9.1
 ```
 
-### Agentic translation (requires LLM)
+### 3. (Optional) Install LLM backends
+
+The agentic path requires either a local Ollama instance or a HuggingFace
+token. Both are optional — the deterministic path works without any LLM.
+
+**Local LLMs via Ollama:**
 
 ```bash
-# Option A: Local Ollama
-ollama pull llama3.1:8b-instruct
-python translate.py circuit.mlir --model llama3.1-8b
-
-# Option B: HuggingFace free tier (no GPU needed)
-export HF_TOKEN=hf_...   # get token at https://huggingface.co/settings/tokens
-python translate.py circuit.mlir --model gpt-oss-20b
-
-# Force LLM path even for known dialects
-python translate.py circuit.mlir --model llama3.1-8b --force-agentic
-
-# List all available models
-python translate.py --list-models
+# Install Ollama: https://ollama.com/download
+bash scripts/setup_llm.sh        # Pulls Llama 3.1 8B, Code Llama 13B, etc.
 ```
 
-### Launch the Web UI
-
-```bash
-streamlit run src/ui/app.py
-
-# Share on network
-streamlit run src/ui/app.py --server.address 0.0.0.0 --server.port 8501
-```
-
-## CLI Reference
-
-```
-python translate.py [OPTIONS] FILE
-
-Positional:
-  FILE                   MLIR file path, or '-' for stdin
-
-Options:
-  -o FILE                Write QIR to file (metadata to stdout)
-  --model KEY            Enable agentic pipeline with this model
-  --force-agentic        Skip deterministic parser (requires --model)
-  --max-iterations N     Max repair iterations (default: 5)
-  --shots N              Simulation shots (default: 1000)
-  --mode {shots,probs}   Verification mode (default: shots)
-  --gate-only            Gate comparison only (no simulation)
-  --no-verify            Skip all verification
-  --json                 JSON output for scripting/CI
-  --quiet / -q           QIR only, no metadata
-  --list-models          Show available model keys
-
-Exit codes:
-  0    Translation verified
-  1    Verification failed or error
-  2    Unseen dialect (use --model)
-  130  Ctrl-C
-```
-
-## Verification Modes
-
-| Mode | MLIR Side | QIR Side | Shot Noise | Use Case |
-|------|-----------|----------|------------|----------|
-| `shots` (default) | `qml.sample()` 1K shots | `qirrunner` 1K shots | Both sides | Realistic execution |
-| `probs` | `qml.probs()` exact | `qirrunner` 100K shots | QIR only (~0.04%) | Proving semantic correctness |
-
-## Project Structure
-
-```
-agentic_mlir_qir_updated/
-├── translate.py                  # CLI entry point
-├── src/
-│   ├── config/                   # Settings, LLM model configs
-│   ├── dialects/                 # BaseDialect, CatalystDialect, QuakeDialect
-│   ├── parsers/                  # SSA-aware MLIR parser
-│   ├── generators/               # Template-based QIR generator
-│   ├── verification/
-│   │   ├── pipeline.py           # 4-stage verification (gate + QIR exec + MLIR exec + TVD)
-│   │   ├── simulator_registry.py # Extensible backend registry with can_handle()
-│   │   ├── qir_runner.py         # QIR execution via qirrunner (subprocess isolation)
-│   │   ├── catalyst_runner.py    # Catalyst MLIR execution via PennyLane qjit
-│   │   ├── quake_runner.py       # Quake MLIR execution via cudaq
-│   │   ├── gate_counter.py       # Gate counting + comparison
-│   │   └── metrics.py            # TVD, KL divergence, exact probability comparison
-│   ├── agents/
-│   │   ├── crew_manager.py       # CrewAI orchestration + 3-path routing
-│   │   ├── translation_agent.py  # LLM translation with context engineering
-│   │   └── verification_agent.py # Verification feedback
-│   ├── tools/
-│   │   ├── web_fetch_tool.py     # Web search for unseen dialects
-│   │   ├── rag_tool.py           # ChromaDB knowledge retrieval
-│   │   ├── gate_counter_tool.py  # Gate counting for agents
-│   │   └── simulator_discovery_tool.py  # Find/cache simulators for unseen dialects
-│   └── ui/
-│       └── app.py                # Streamlit web interface
-├── examples/
-│   ├── mlir/                     # Catalyst MLIR examples
-│   ├── quake_mlir/               # Quake MLIR examples (via cudaq)
-│   └── qir/                      # QIR ground truth (via qiskit-qir)
-├── example/
-│   ├── catalyst_mlir/            # Catalyst examples (GHZ 5-100, MBQC, QEC, random)
-│   ├── quake_mlir/               # Quake examples (GHZ 5-100, MBQC, random)
-│   ├── ftqc_mlir/                # FTQC (unseen dialect) examples (Steane code)
-│   └── qir/                      # Reference QIR files (hand-written + qiskit-qir)
-├── example_quake/
-│   └── openqasm_to_quake_mlir.py # OpenQASM 3 -> Quake MLIR converter
-├── QIR/
-│   └── qir_generation.py         # Qiskit -> QIR ground truth generator
-├── experiments/                  # Reproducible experiment scripts (see below)
-├── knowledge_base/               # Auto-populated docs (QIR specs, MLIR docs)
-└── scripts/                      # Setup scripts (Ollama, knowledge base)
-```
-
-## Reproducing Experiments
-
-The `experiments/` directory contains scripts to reproduce all results from the paper.
-
-### Smoke test (2 minutes, no LLM needed)
-
-```bash
-bash experiments/run_smoke_test.sh
-```
-
-### Deterministic experiments (no LLM needed, ~1 hour total)
-
-```bash
-bash experiments/run_e1_correctness.sh    # E1: Translation correctness
-bash experiments/run_e2_scalability.sh    # E2: GHZ scaling (2-100 qubits)
-bash experiments/run_e6_cross_dialect.sh  # E6: Cross-dialect portability
-bash experiments/run_e4_mutations.sh      # E4: Mutation-based verification testing
-```
-
-### LLM experiments (requires Ollama or HF_TOKEN, ~10-18 hours)
-
-```bash
-# Start Ollama and pull models first
-ollama pull llama3.1:8b-instruct
-ollama pull codellama:13b-instruct
-
-bash experiments/run_e3_agentic.sh        # E3: Deterministic vs Agentic vs Hybrid
-bash experiments/run_e5_llm_profiling.sh  # E5: 5-model performance comparison
-bash experiments/run_e7_unseen_dialect.sh # E7: Unseen dialect (FTQC)
-```
-
-For E5 with all 5 models (including cloud):
-```bash
-export HF_TOKEN=hf_...  # for gpt-oss-20b
-# Also ensure llama3.1:70b and codellama:34b are pulled for full profiling
-bash experiments/run_e5_llm_profiling.sh
-```
-
-### Analyze results
-
-```bash
-python experiments/analyze_results.py all   # All experiments
-python experiments/analyze_results.py e1    # Single experiment
-```
-
-Results are written to `experiments/results/` as JSONL files.
-
-### Experiment Summary
-
-| Experiment | What It Tests | LLM Needed | Time |
-|------------|--------------|------------|------|
-| E1 | Translation correctness (72 circuit-dialect pairs) | No | ~30 min |
-| E2 | Scalability (GHZ 5-100 qubits, 20 sizes) | No | ~20 min |
-| E3 | Deterministic vs Agentic vs Hybrid paths | Yes | ~8 hr |
-| E4 | Verification reliability (5 mutation types) | No | ~30 min |
-| E5 | LLM model profiling (5 models) | Yes | ~8 hr |
-| E6 | Cross-dialect portability (14 matched pairs) | No | ~20 min |
-| E7 | Unseen dialect translation (FTQC) | Yes | ~30 min |
-
-## Benchmark Circuits
-
-39 unique circuits across 9 categories:
-
-| Category | Circuits | Qubits | Dialects |
-|----------|----------|--------|----------|
-| Standard (Bell, GHZ-3) | 2 | 2-3 | Both |
-| GHZ scaling | 20 (GHZ-5 to GHZ-100, every 5) | 5-100 | Both |
-| MBQC | 4 (teleport, RZ, RX, CNOT) | 2-4 | Both |
-| Conditional | 1 (teleportation) | 3 | Both |
-| Random | 5 | 2-7 | Both |
-| QEC | 1 (Steane code) | 7 | Catalyst |
-| Parametric | 1 (RX/RY/RZ) | 1 | Catalyst |
-| Variational | 1 (autodiff gradient) | 1 | Catalyst |
-| FTQC (unseen) | 4 (Steane 1Q-3Q) | 1-3 logical | FTQC only |
-
-Generate additional Quake MLIR circuits from OpenQASM:
-```bash
-python example_quake/openqasm_to_quake_mlir.py
-```
-
-Generate QIR ground truth from Qiskit:
-```bash
-python QIR/qir_generation.py > examples/qir/output.ll
-```
-
-## Supported LLM Models
-
-| Model | Provider | Params | VRAM | Setup |
-|-------|----------|--------|------|-------|
-| llama3.1-8b | Ollama (local) | 8B | ~6 GB | `ollama pull llama3.1:8b-instruct` |
-| codellama-13b | Ollama (local) | 13B | ~8 GB | `ollama pull codellama:13b-instruct` |
-| codellama-34b-q4 | Ollama (local) | 34B | ~20 GB | `ollama pull codellama:34b-instruct-q4_K_M` |
-| llama3.1-70b-q4 | Ollama (local) | 70B | ~40 GB | `ollama pull llama3.1:70b-instruct-q4_K_M` |
-| gpt-oss-20b | HuggingFace API | 20B | Cloud | `export HF_TOKEN=hf_...` |
-
-## Key Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| pennylane | 0.44.0 | Quantum ML framework |
-| pennylane-catalyst | 0.14.0 | Catalyst MLIR JIT execution |
-| cudaq | 0.13 | CUDA Quantum / Quake dialect |
-| qirrunner | 0.9.1 | QIR execution (qir-alliance) |
-| crewai | 1.10.0 | Multi-agent orchestration |
-| streamlit | 1.54+ | Web UI |
-| pyqir | 0.12.3 | QIR parsing |
-
-## Environment Setup
+**HuggingFace cloud LLMs:**
 
 ```bash
 cp .env.example .env
-# Edit .env with your tokens:
-#   HF_TOKEN=hf_...          (for gpt-oss-20b cloud model)
-#   SERPER_API_KEY=...        (optional, for web search tool)
+# Edit .env and set HF_TOKEN=<your free HuggingFace token>
 ```
 
-## Optional: Knowledge Base (for RAG mode)
-
-The system defaults to context engineering (no RAG needed). To enable RAG:
+### 4. Run a translation
 
 ```bash
-python scripts/fetch_knowledge.py    # Download QIR specs, MLIR docs
-python scripts/initialize_db.py      # Index into ChromaDB
+# Deterministic translation (Catalyst dialect, Bell state)
+python translate.py example/catalyst_mlir/code_bell.mlir
+
+# Agentic translation on the unseen FTQC dialect (requires Ollama + Llama 3.1)
+python translate.py example/ftqc_mlir/steane_2q_bell.mlir --model llama3.1-8b
+
+# JSON output (for CI / scripting)
+python translate.py example/catalyst_mlir/code_bell.mlir --json
+
+# Skip simulation verification (faster)
+python translate.py example/catalyst_mlir/code_bell.mlir --no-verify
+
+# List all available LLM model keys
+python translate.py --list-models
 ```
+
+### 5. Run the Streamlit demo (optional)
+
+```bash
+streamlit run src/ui/app.py
+```
+
+---
+
+## Reproducing paper experiments
+
+The four experiments reported in the paper (E1, E2, E3, E4) each have a
+shell driver under `experiments/`:
+
+| Experiment | Script                                  | Wall time     |
+|------------|-----------------------------------------|---------------|
+| E1 — Translation Correctness            | `experiments/run_e1_correctness.sh`     | ~30 min       |
+| E2 — Scalability                        | `experiments/run_e2_scalability.sh`     | ~20 min       |
+| E3 — Cross-Dialect Portability          | `experiments/run_e3_cross_dialect.sh`   | ~10 min       |
+| E4 — Unseen-Dialect Translation (FTQC)  | `experiments/run_e4_unseen_dialect.sh`  | 2–4 h (LLM)   |
+
+A smoke test that exercises every translation path in roughly two minutes is
+available at `experiments/run_smoke_test.sh`. See
+[experiments/README.md](experiments/README.md) for full details, expected
+outputs, and analysis commands.
+
+---
+
+## Hardware used in the paper
+
+* NVIDIA RTX 6000 Ada GPU (48 GB VRAM)
+* Intel Xeon w5-2465X CPU
+* 256 GB RAM
+* Ubuntu 22.04, Python 3.12
+
+The deterministic path runs comfortably on a CPU-only laptop; the agentic
+path needs a GPU large enough for the chosen Ollama model (≈ 6 GB for
+Llama 3.1 8B, ≈ 40 GB for Llama 3.1 70B).
+
+---
+
+## Software versions
+
+| Package              | Version  |
+|----------------------|----------|
+| PennyLane            | 0.44.0   |
+| PennyLane-Catalyst   | 0.14.0   |
+| CUDA-Q               | 0.13     |
+| qir-runner           | 0.9.1    |
+| CrewAI               | 1.10.0   |
+| Ollama               | 0.6      |
+| Python               | 3.12     |
+
+The pinned versions used in the paper are recorded in `requirements.txt`.
+`qir-runner` and CrewAI are under active development; later releases may
+require minor adaptation.
+
+---
+
+## Citation
+
+If you use this codebase, please cite:
+
+```bibtex
+@inproceedings{afrose2026agentic,
+  author    = {Sharmin Afrose and Vicente Leyton-Ortega and Narasinga Rao Miniskar and Elaine Wong and Travis S. Humble},
+  title     = {Agentic MLIR-to-QIR Translation with Verification: A Hybrid Deterministic and LLM Approach},
+  booktitle = {2026 IEEE International Conference on Quantum Computing and Engineering (QCE)},
+  year      = {2026}
+}
+```
+
+---
 
 ## License
 
-MIT
+This codebase is released under the Apache License, Version 2.0. See
+`pyproject.toml` for the package-level license declaration.
+
+---
+
+## Acknowledgments
+
+This work was supported by the U.S. Department of Energy, Office of Science
+under Contract No. DE-AC05-00OR22725, with funding from the Office of
+Advanced Scientific Computing Research's Accelerated Research in Quantum
+Computing Program's Modular and Error-Aware Software Stack for Heterogeneous
+Quantum Computing Ecosystems (MACH-Q) project.
+
+The authors thank the broader quantum-compiler community for the open-source
+tools this work builds on, including PennyLane Catalyst, NVIDIA CUDA-Q,
+the QIR Alliance and `qir-runner`, and the CrewAI multi-agent framework.
+
+### DOE Public Access Plan
+
+This manuscript has been authored by UT-Battelle, LLC, under Contract No.
+DE-AC05-00OR22725 with the U.S. Department of Energy. The United States
+Government retains and the publisher, by accepting the article for
+publication, acknowledges that the United States Government retains a
+non-exclusive, paid-up, irrevocable, worldwide license to publish or reproduce
+the published form of this manuscript, or allow others to do so, for United
+States Government purposes. The Department of Energy will provide public
+access to these results of federally sponsored research in accordance with the
+DOE Public Access Plan
+(<https://www.energy.gov/doe-public-access-plan>).
+
+### Authors and affiliation
+
+Sharmin Afrose, Vicente Leyton-Ortega, Narasinga Rao Miniskar, Elaine Wong,
+and Travis S. Humble &mdash; Oak Ridge National Laboratory, Oak Ridge, TN, USA
+(<{afroses, leytonortheva, miniskarnr, wongey, humblets}@ornl.gov>).

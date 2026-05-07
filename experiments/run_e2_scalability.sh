@@ -11,7 +11,7 @@ cd "$PROJECT_DIR"
 RESULTS_DIR="experiments/results/e2"
 mkdir -p "$RESULTS_DIR"
 
-GHZ_SIZES=(5 10 15 20 25 30 100)
+GHZ_SIZES=(5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100)
 SHOTS=1000
 
 # Optional: set AGENTIC_MODEL to run agentic path too
@@ -24,7 +24,8 @@ echo "Results → $RESULTS_DIR"
 [ -n "$AGENTIC_MODEL" ] && echo "Agentic model: $AGENTIC_MODEL"
 echo ""
 
-# Circuits >= 50 qubits can't be simulated (state vector OOM)
+# Circuits > 30 qubits can't be simulated (state vector OOM on 256GB RAM)
+# Translation + gate counting still works via --no-verify
 MAX_SIM_QUBITS=30
 
 # Helper: map GHZ size to zero-padded filename in ghz/ subdirectory
@@ -71,17 +72,7 @@ for n in "${GHZ_SIZES[@]}"; do
   done
 done
 
-# Also add Bell (2q) and GHZ-3 from examples/mlir
-echo ""
-echo "--- Small circuits (Bell, GHZ-3) ---"
-for f in examples/mlir/bell_state.mlir examples/mlir/ghz_state.mlir; do
-  [ -f "$f" ] || continue
-  echo "  $(basename "$f") ..."
-  python translate.py "$f" --json --shots "$SHOTS" \
-    >> "$RESULTS_DIR/deterministic_shots.jsonl" 2>/dev/null
-  python translate.py "$f" --json --mode probs \
-    >> "$RESULTS_DIR/deterministic_probs.jsonl" 2>/dev/null
-done
+# Bell and GHZ-3 are covered by E1 (example/catalyst_mlir/); E2 focuses on GHZ scaling only.
 
 # ── Agentic path (if model specified) ────────────────────────────────────────
 if [ -n "$AGENTIC_MODEL" ]; then

@@ -1,0 +1,38 @@
+E7 — Unseen Dialect Translation (FTQC)
+============================================================
+
+llama3.1-8b: 12/12 success
+  steane_1q_h r1: success=True iter=1 t=10.2s
+  steane_1q_h r2: success=True iter=1 t=5.4s
+  steane_1q_h r3: success=True iter=1 t=4.6s
+  steane_2q_bell r1: success=True iter=1 t=4.9s
+  steane_2q_bell r2: success=True iter=1 t=4.7s
+  steane_2q_bell r3: success=True iter=1 t=4.8s
+  steane_3q_grover r1: success=True iter=1 t=5.1s
+  steane_3q_grover r2: success=True iter=1 t=5.0s
+  steane_3q_grover r3: success=True iter=1 t=4.8s
+  steane_3q_qft r1: success=True iter=1 t=9.2s
+  steane_3q_qft r2: success=True iter=1 t=9.0s
+  steane_3q_qft r3: success=True iter=1 t=5.1s
+
+codellama-13b: 6/18 success
+  steane_1q_h r1: success=True iter=1 t=15.5s
+  steane_1q_h r2: success=True iter=1 t=12.0s
+  steane_1q_h r3: success=True iter=1 t=12.7s
+  steane_2q_bell r1: success=True iter=1 t=15.1s
+  steane_2q_bell r2: success=True iter=1 t=17.6s
+  steane_2q_bell r3: success=True iter=1 t=16.1s
+  steane_3q_grover r1: success=False iter=0 t=13.5s err=LLM did not produce valid QIR (likely emitted a tool-call JSON instead of LLVM I
+  steane_3q_grover r1: success=False iter=? t=0.0s
+  steane_3q_grover r2: success=False iter=0 t=13.7s err=LLM did not produce valid QIR (likely emitted a tool-call JSON instead of LLVM I
+  steane_3q_grover r2: success=False iter=? t=0.0s
+  steane_3q_grover r3: success=False iter=0 t=25.1s err=LLM did not produce valid QIR (likely emitted a tool-call JSON instead of LLVM I
+  steane_3q_grover r3: success=False iter=? t=0.0s
+  steane_3q_qft r1: success=False iter=0 t=15.3s err=LLM did not produce valid QIR (likely emitted a tool-call JSON instead of LLVM I
+  steane_3q_qft r1: success=False iter=? t=0.0s
+  steane_3q_qft r2: success=False iter=0 t=13.8s err=LLM did not produce valid QIR (likely emitted a tool-call JSON instead of LLVM I
+  steane_3q_qft r2: success=False iter=? t=0.0s
+  steane_3q_qft r3: success=False iter=0 t=15.9s err=LLM did not produce valid QIR (likely emitted a tool-call JSON instead of LLVM I
+  steane_3q_qft r3: success=False iter=? t=0.0s
+
+>>> Paper Table VII uses these numbers.

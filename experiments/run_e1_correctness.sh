@@ -31,7 +31,7 @@ needs_no_verify() {
 
 echo "--- Catalyst dialect (shots mode) ---"
 > "$RESULTS_DIR/catalyst_shots.jsonl"
-for f in example/catalyst_mlir/*.mlir example/catalyst_mlir/ghz/*.mlir examples/mlir/*.mlir; do
+for f in example/catalyst_mlir/*.mlir example/catalyst_mlir/ghz/*.mlir; do
   name="$(basename "$f" .mlir)"
   echo "  $name ..."
   if needs_no_verify "$f"; then
@@ -48,7 +48,7 @@ done
 echo ""
 echo "--- Catalyst dialect (probs mode) ---"
 > "$RESULTS_DIR/catalyst_probs.jsonl"
-for f in example/catalyst_mlir/*.mlir example/catalyst_mlir/ghz/*.mlir examples/mlir/*.mlir; do
+for f in example/catalyst_mlir/*.mlir example/catalyst_mlir/ghz/*.mlir; do
   name="$(basename "$f" .mlir)"
   echo "  $name ..."
   if needs_no_verify "$f"; then

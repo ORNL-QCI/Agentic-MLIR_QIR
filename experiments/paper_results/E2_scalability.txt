@@ -1,0 +1,100 @@
+E2 — GHZ Scalability (20 sizes × 2 dialects = 42 pairs)
+============================================================
+
+shots mode (42 entries):
+Qubits  Dialect  Gate        TVD     Time
+---------------------------------------------
+     5 catalyst    OK      99.6%     21ms
+     5    quake    OK      98.5%     19ms
+    10 catalyst    OK      95.6%     14ms
+    10    quake    OK      98.9%     16ms
+    15 catalyst    OK      98.7%     22ms
+    15    quake    OK      98.3%     14ms
+    20 catalyst    OK      98.2%     14ms
+    20    quake    OK      97.1%     21ms
+    25 catalyst    OK      99.8%     16ms
+    25    quake    OK      94.8%     15ms
+    30 catalyst    OK      95.9%     22ms
+    30    quake    OK      97.5%     16ms
+    35 catalyst    OK        ---     13ms
+    35    quake    OK        ---     15ms
+    40 catalyst    OK        ---     15ms
+    40    quake    OK        ---     16ms
+    45 catalyst    OK        ---     23ms
+    45    quake    OK        ---     15ms
+    50 catalyst    OK        ---     17ms
+    50    quake    OK        ---     16ms
+    55 catalyst    OK        ---     16ms
+    55    quake    OK        ---     17ms
+    60 catalyst    OK        ---     15ms
+    60    quake    OK        ---     23ms
+    65 catalyst    OK        ---     17ms
+    65    quake    OK        ---     20ms
+    70 catalyst    OK        ---     16ms
+    70    quake    OK        ---     15ms
+    75 catalyst    OK        ---     17ms
+    75    quake    OK        ---     16ms
+    80 catalyst    OK        ---     16ms
+    80    quake    OK        ---     17ms
+    85 catalyst    OK        ---     17ms
+    85    quake    OK        ---     23ms
+    90 catalyst    OK        ---     21ms
+    90    quake    OK        ---     27ms
+    95 catalyst    OK        ---     18ms
+    95    quake    OK        ---     15ms
+   100 catalyst    OK        ---     17ms
+   100    quake    OK        ---     17ms
+     2 catalyst    OK      97.5%     15ms
+     3 catalyst    OK      96.7%     15ms
+
+Avg TVD: 97.6%, Min TVD: 94.8%, Gate match: 42/42
+
+probs mode (42 entries):
+Qubits  Dialect  Gate        TVD     Time
+---------------------------------------------
+     5 catalyst    OK      99.8%     15ms
+     5    quake    OK      98.8%     13ms
+    10 catalyst    OK      99.9%     19ms
+    10    quake    OK      99.5%     14ms
+    15 catalyst    OK      99.8%     22ms
+    15    quake    OK      98.3%     14ms
+    20 catalyst    OK     100.0%     16ms
+    20    quake    OK      97.9%     16ms
+    25 catalyst    OK      99.9%     22ms
+    25    quake    OK      98.7%     14ms
+    30 catalyst    OK      99.9%     22ms
+    30    quake    OK      98.1%     20ms
+    35 catalyst    OK        ---     13ms
+    35    quake    OK        ---     24ms
+    40 catalyst    OK        ---     15ms
+    40    quake    OK        ---     26ms
+    45 catalyst    OK        ---     15ms
+    45    quake    OK        ---     18ms
+    50 catalyst    OK        ---     26ms
+    50    quake    OK        ---     24ms
+    55 catalyst    OK        ---     16ms
+    55    quake    OK        ---     15ms
+    60 catalyst    OK        ---     16ms
+    60    quake    OK        ---     19ms
+    65 catalyst    OK        ---     16ms
+    65    quake    OK        ---     15ms
+    70 catalyst    OK        ---     17ms
+    70    quake    OK        ---     23ms
+    75 catalyst    OK        ---     26ms
+    75    quake    OK        ---     23ms
+    80 catalyst    OK        ---     22ms
+    80    quake    OK        ---     15ms
+    85 catalyst    OK        ---     16ms
+    85    quake    OK        ---     18ms
+    90 catalyst    OK        ---     16ms
+    90    quake    OK        ---     19ms
+    95 catalyst    OK        ---     25ms
+    95    quake    OK        ---     20ms
+   100 catalyst    OK        ---     17ms
+   100    quake    OK        ---     17ms
+     2 catalyst    OK      99.9%     14ms
+     3 catalyst    OK      99.7%     24ms
+
+Avg TVD: 99.3%, Min TVD: 97.9%, Gate match: 42/42
+
+>>> Paper Table VI uses grouped averages of these numbers.

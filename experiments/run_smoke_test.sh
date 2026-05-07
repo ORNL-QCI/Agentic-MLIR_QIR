@@ -32,11 +32,11 @@ echo ""
 
 # 1. Deterministic — Catalyst Bell (shots mode)
 smoke "Catalyst Bell (shots)" \
-  python translate.py examples/mlir/bell_state.mlir --json --shots 100
+  python translate.py example/catalyst_mlir/code_bell.mlir --json --shots 100
 
 # 2. Deterministic — Catalyst Bell (probs mode)
 smoke "Catalyst Bell (probs)" \
-  python translate.py examples/mlir/bell_state.mlir --json --mode probs
+  python translate.py example/catalyst_mlir/code_bell.mlir --json --mode probs
 
 # 3. Deterministic — Quake Bell
 smoke "Quake Bell (shots)" \
@@ -60,14 +60,14 @@ smoke "Random circuit 658" \
 
 # 8. No-verify mode
 smoke "No-verify mode" \
-  python translate.py examples/mlir/bell_state.mlir --json --no-verify
+  python translate.py example/catalyst_mlir/code_bell.mlir --json --no-verify
 
 # 9. JSON output structure check
 smoke "JSON structure" \
   python -c "
 import subprocess, json, sys
 r = subprocess.run(
-    ['python', 'translate.py', 'examples/mlir/bell_state.mlir', '--json', '--shots', '100'],
+    ['python', 'translate.py', 'example/catalyst_mlir/code_bell.mlir', '--json', '--shots', '100'],
     capture_output=True, text=True
 )
 d = json.loads(r.stdout)

@@ -1,0 +1,10 @@
+E1 — Translation Correctness (example/ only, final)
+============================================================
+
+catalyst shots: 33 total, 33 gate OK, 17 simulated, avg=97.0%, min=91.9%
+quake shots: 35 total, 35 gate OK, 18 simulated, avg=97.9%, min=92.6%
+catalyst probs: 33 total, 33 gate OK, 17 simulated, avg=99.3%, min=96.3%
+quake probs: 35 total, 35 gate OK, 18 simulated, avg=98.4%, min=95.1%
+
+AGGREGATE: 68 total, 68 gate OK (100%)
+>>> Paper Table V, lines 535-538

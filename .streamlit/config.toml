@@ -1,0 +1,6 @@
+[global]
+# Fix "Unrecognized type: LargeUtf8" error with pyarrow >= 23
+dataFrameSerialization = "legacy"
+
+[server]
+headless = true

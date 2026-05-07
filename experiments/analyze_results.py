@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
-"""Analyze experiment results and generate tables/plots for the paper.
+"""Analyze experiment results and generate summary tables for the paper.
 
 Usage:
-  python experiments/analyze_results.py e1      # E1 correctness table
-  python experiments/analyze_results.py e2      # E2 scalability plots
-  python experiments/analyze_results.py e3      # E3 path comparison
-  python experiments/analyze_results.py e4      # E4 mutation ROC
-  python experiments/analyze_results.py e5      # E5 LLM profiling
-  python experiments/analyze_results.py e6      # E6 cross-dialect
-  python experiments/analyze_results.py all     # Everything
+  python experiments/analyze_results.py e1     # E1 correctness table
+  python experiments/analyze_results.py e2     # E2 scalability table
+  python experiments/analyze_results.py e3     # E3 cross-dialect table
+  python experiments/analyze_results.py e4     # E4 unseen dialect (FTQC)
+  python experiments/analyze_results.py all    # All four
 """
 
 import json
 import sys
 from pathlib import Path
-from collections import defaultdict
 
 RESULTS_BASE = Path(__file__).parent / "results"
 
@@ -31,7 +28,6 @@ def load_jsonl(path: Path) -> list:
     text = path.read_text()
     results = []
 
-    # Try standard JSONL first (one JSON per line)
     lines = text.splitlines()
     if lines and lines[0].strip().startswith('{') and lines[0].strip().endswith('}'):
         for line in lines:
@@ -44,11 +40,9 @@ def load_jsonl(path: Path) -> list:
         if results:
             return results
 
-    # Fall back to multi-line JSON: use decoder to find object boundaries
     decoder = json.JSONDecoder()
     idx = 0
     while idx < len(text):
-        # Skip whitespace
         while idx < len(text) and text[idx] in ' \t\n\r':
             idx += 1
         if idx >= len(text):
@@ -95,7 +89,6 @@ def analyze_e1():
                 path_str = d.get("translation_path", "?")
                 print(f"{name:<35} {gate_match:<12} {tvd_str:>8} {path_str:<15}")
 
-    # Count overall pass rates
     total, passed = 0, 0
     for mode in ["shots", "probs"]:
         for dialect in ["catalyst", "quake"]:
@@ -105,7 +98,7 @@ def analyze_e1():
                 gc = d.get("gate_comparison", {})
                 vr = d.get("verification", {})
                 if gc.get("matches") and (vr.get("similarity_passes", False)
-                                           if vr else True):
+                                          if vr else True):
                     passed += 1
 
     if total > 0:
@@ -136,9 +129,8 @@ def analyze_e2():
             gc = d.get("gate_comparison", {})
             gates = "MATCH" if gc.get("matches") else "DIFF"
 
-            # Infer qubit count from filename
             import re
-            m = re.search(r'ghz_(\d+)', name)
+            m = re.search(r'ghz_?(\d+)', name)
             qubits = int(m.group(1)) if m else "?"
 
             print(f"{name:<30} {str(qubits):>6} {time_ms:>10.1f} "
@@ -146,131 +138,12 @@ def analyze_e2():
 
 
 def analyze_e3():
-    """E3: Agentic comparison — summarize by path and model."""
+    """E3: Cross-dialect portability."""
     print("\n" + "=" * 70)
-    print("E3: Agentic vs. Deterministic vs. Hybrid")
+    print("E3: Cross-Dialect Portability")
     print("=" * 70)
 
-    # Deterministic baseline
-    det_data = load_jsonl(RESULTS_BASE / "e3" / "deterministic.jsonl")
-    if det_data:
-        tvds = [d.get("verification", {}).get("similarity", 0)
-                for d in det_data if d.get("verification")]
-        avg_tvd = sum(tvds) / len(tvds) if tvds else 0
-        times = [d.get("translation_time_s", 0) for d in det_data]
-        avg_time = sum(times) / len(times) if times else 0
-        print(f"\nDeterministic: avg TVD={avg_tvd:.4f}, avg time={avg_time*1000:.1f}ms, "
-              f"n={len(det_data)}")
-
-    # Agentic + hybrid per model
-    for prefix in ["agentic", "hybrid"]:
-        for model_file in sorted(RESULTS_BASE.glob(f"e3/{prefix}_*.jsonl")):
-            data = load_jsonl(model_file)
-            if not data:
-                continue
-            model = model_file.stem.replace(f"{prefix}_", "")
-            tvds = [d.get("verification", {}).get("similarity", 0)
-                    for d in data if d.get("verification")]
-            avg_tvd = sum(tvds) / len(tvds) if tvds else 0
-            times = [d.get("translation_time_s", 0) for d in data]
-            avg_time = sum(times) / len(times) if times else 0
-            iters = [d.get("iterations", 1) for d in data]
-            avg_iter = sum(iters) / len(iters) if iters else 0
-            errors = sum(1 for d in data if "error" in d)
-            print(f"{prefix.title():>8} ({model}): avg TVD={avg_tvd:.4f}, "
-                  f"avg time={avg_time:.2f}s, avg iters={avg_iter:.1f}, "
-                  f"errors={errors}, n={len(data)}")
-
-
-def analyze_e4():
-    """E4: Mutation testing — detection rates and ROC data."""
-    print("\n" + "=" * 70)
-    print("E4: Mutation Verification")
-    print("=" * 70)
-
-    for mode in ["shots", "probs"]:
-        path = RESULTS_BASE / "e4" / f"mutations_{mode}.jsonl"
-        data = load_jsonl(path)
-        if not data:
-            continue
-
-        print(f"\n--- {mode} mode ---")
-
-        # Baseline (correct translations)
-        baselines = [d for d in data if d.get("mutation") == "none"]
-        mutations = [d for d in data if d.get("mutation") != "none"]
-
-        if baselines:
-            avg_baseline = sum(d.get("similarity", 0) for d in baselines) / len(baselines)
-            print(f"Baseline TVD (correct): {avg_baseline:.4f} (n={len(baselines)})")
-
-        # Per mutation type
-        by_type = defaultdict(list)
-        for d in mutations:
-            by_type[d["mutation"]].append(d)
-
-        print(f"\n{'Mutation Type':<20} {'Tested':>6} {'Detected':>8} {'Rate':>6} {'Avg TVD':>8}")
-        print("-" * 55)
-
-        total_tested, total_detected = 0, 0
-        for mut_type, items in sorted(by_type.items()):
-            tested = len(items)
-            detected = sum(1 for d in items if d.get("detected"))
-            rate = 100 * detected / tested if tested else 0
-            avg_tvd = sum(d.get("similarity", 0) for d in items
-                          if d.get("similarity", -1) >= 0) / max(1, tested)
-            print(f"{mut_type:<20} {tested:>6} {detected:>8} {rate:>5.1f}% {avg_tvd:>8.4f}")
-            total_tested += tested
-            total_detected += detected
-
-        if total_tested > 0:
-            print(f"\nOverall detection rate: {total_detected}/{total_tested} "
-                  f"({100*total_detected/total_tested:.1f}%)")
-
-
-def analyze_e5():
-    """E5: LLM profiling — model comparison table."""
-    print("\n" + "=" * 70)
-    print("E5: LLM Model Performance Profiling")
-    print("=" * 70)
-
-    print(f"\n{'Model':<20} {'Success':>8} {'Avg TVD':>8} {'Avg Time':>10} "
-          f"{'Avg Iters':>10} {'Gate Match':>10}")
-    print("-" * 70)
-
-    for model_file in sorted(RESULTS_BASE.glob("e5/profile_*.jsonl")):
-        data = load_jsonl(model_file)
-        if not data:
-            continue
-        model = model_file.stem.replace("profile_", "")
-        total = len(data)
-        errors = sum(1 for d in data if "error" in d)
-        successes = total - errors
-
-        valid = [d for d in data if "error" not in d]
-        tvds = [d.get("verification", {}).get("similarity", 0)
-                for d in valid if d.get("verification")]
-        times = [d.get("translation_time_s", 0) for d in valid]
-        iters = [d.get("iterations", 1) for d in valid]
-        gate_matches = sum(1 for d in valid
-                          if d.get("gate_comparison", {}).get("matches"))
-
-        avg_tvd = sum(tvds) / len(tvds) if tvds else 0
-        avg_time = sum(times) / len(times) if times else 0
-        avg_iter = sum(iters) / len(iters) if iters else 0
-        match_rate = 100 * gate_matches / len(valid) if valid else 0
-
-        print(f"{model:<20} {successes:>5}/{total:<3} {avg_tvd:>7.4f} "
-              f"{avg_time:>9.2f}s {avg_iter:>9.1f} {match_rate:>9.1f}%")
-
-
-def analyze_e6():
-    """E6: Cross-dialect portability."""
-    print("\n" + "=" * 70)
-    print("E6: Cross-Dialect Portability")
-    print("=" * 70)
-
-    path = RESULTS_BASE / "e6" / "cross_dialect.jsonl"
+    path = RESULTS_BASE / "e3" / "cross_dialect.jsonl"
     data = load_jsonl(path)
     if not data:
         return
@@ -299,6 +172,43 @@ def analyze_e6():
     print(f"\nBoth dialects gate-match: {both_match}/{len(data)}")
 
 
+def analyze_e4():
+    """E4: Unseen-dialect (FTQC) translation across models."""
+    print("\n" + "=" * 70)
+    print("E4: Unseen Dialect Translation (FTQC)")
+    print("=" * 70)
+
+    e4_dir = RESULTS_BASE / "e4"
+    if not e4_dir.exists():
+        print(f"  WARNING: {e4_dir} not found")
+        return
+
+    for jsonl in sorted(e4_dir.glob("ftqc_*.jsonl")):
+        model = jsonl.stem.replace("ftqc_", "")
+        data = load_jsonl(jsonl)
+        if not data:
+            continue
+
+        # Per-circuit success rates (success = translation_path == "ai_agent" with QIR)
+        per_circuit = {}
+        times = []
+        for d in data:
+            circuit = d.get("circuit", "?")
+            ok = bool(d.get("qir")) and d.get("success", False)
+            per_circuit.setdefault(circuit, []).append(ok)
+            if ok and d.get("translation_time_s") is not None:
+                times.append(d["translation_time_s"])
+
+        total_ok = sum(sum(v) for v in per_circuit.values())
+        total_n = sum(len(v) for v in per_circuit.values())
+        avg_t = (sum(times) / len(times)) if times else 0.0
+
+        print(f"\n--- {model} ---")
+        for circuit, runs in sorted(per_circuit.items()):
+            print(f"  {circuit:<25} {sum(runs)}/{len(runs)}")
+        print(f"  TOTAL: {total_ok}/{total_n}, avg {avg_t:.1f}s/translation")
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -310,8 +220,6 @@ def main():
         "e2": analyze_e2,
         "e3": analyze_e3,
         "e4": analyze_e4,
-        "e5": analyze_e5,
-        "e6": analyze_e6,
     }
 
     if target == "all":

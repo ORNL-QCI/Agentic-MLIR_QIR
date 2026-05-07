@@ -1,0 +1,24 @@
+E6 — Cross-Dialect Portability (14 matched pairs)
+============================================================
+
+        Circuit  Cat Gate   Cat TVD  Qk Gate    Qk TVD
+-------------------------------------------------------
+           bell        OK     99.8%       OK     98.8%
+          ghz_5        OK     99.7%       OK     99.5%
+         ghz_10        OK     99.8%       OK     98.6%
+         ghz_15        OK     99.9%       OK     99.4%
+         ghz_20        OK     99.9%       OK     99.8%
+         ghz_25        OK     99.7%       OK     99.1%
+         ghz_30        OK     99.8%       OK     99.2%
+        ghz_100        OK        -1       OK        -1
+  teleportation        OK     96.8%       OK     98.0%
+     random_658        OK     99.8%       OK     99.5%
+    random_1847        OK 1.1102230246251565e-16       OK       0.0
+    random_2449        OK       0.0       OK       0.0
+    random_3990        OK     99.9%       OK     97.4%
+    random_6994        OK     99.9%       OK     97.8%
+
+Gate match both: 14/14
+TVD >50% both: 11/14
+
+>>> Paper E6 prose uses these numbers.
