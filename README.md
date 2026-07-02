@@ -28,7 +28,7 @@ Verification: A Hybrid Deterministic and LLM Approach" (IEEE QCE 2026).
 ```
 .
 ├── translate.py                # Main CLI entry point (MLIR file → QIR)
-├── src/                        # Source code (parsers, generators, agents, verification)
+├── agentic_mlir_qir/           # Source package (parsers, generators, agents, verification)
 │   └── README.md               # Code architecture
 ├── experiments/                # Experiment scripts (E1, E2, E3, E4) and analysis
 │   └── README.md               # How to run each experiment
@@ -36,6 +36,7 @@ Verification: A Hybrid Deterministic and LLM Approach" (IEEE QCE 2026).
 │   ├── catalyst_mlir/          # Catalyst-dialect MLIR inputs
 │   ├── quake_mlir/             # Quake-dialect MLIR inputs
 │   ├── ftqc_mlir/              # FTQC-dialect MLIR inputs (unseen dialect)
+│   ├── qasm/                   # OpenQASM 2.0/3.0 inputs (via Qiskit + CUDA-Q)
 │   └── qir/                    # Reference QIR ground truth
 ├── scripts/                    # Helper utilities (Qiskit-QIR ground-truth generator, Ollama setup)
 ├── requirements.txt
@@ -101,10 +102,82 @@ python translate.py example/catalyst_mlir/code_bell.mlir --no-verify
 python translate.py --list-models
 ```
 
+### 4b. Translate OpenQASM input (optional)
+
+OpenQASM 2.0 and 3.0 circuits are supported via a two-step path that reuses
+existing tools: **Qiskit** parses the QASM and **CUDA-Q** emits Quake-dialect
+MLIR, which then flows through the same deterministic MLIR → QIR pipeline.
+
+The QASM frontend needs three packages. `qiskit` and `qiskit-qasm3-import`
+are already in `requirements.txt` (installed in step 1); CUDA-Q is installed
+the same way as the Quake verification backend:
+
+```bash
+# Qiskit + the OpenQASM 3 loader come from requirements.txt (step 1).
+# Add CUDA-Q (see https://nvidia.github.io/cuda-quantum for your platform):
+pip install cuda-quantum==0.13
+
+# Translate an OpenQASM 2.0 circuit (with dual-backend verification)
+python translate.py example/qasm/bell_state_v2.qasm
+
+# Translate an OpenQASM 3.0 circuit
+python translate.py example/qasm/bell_state_v3.qasm
+
+# Read QASM from stdin (input starting with OPENQASM is auto-detected)
+cat example/qasm/ghz_state_v2.qasm | python translate.py -
+
+# Skip simulation verification (faster)
+python translate.py example/qasm/bell_state_v2.qasm --no-verify
+
+# Write the QIR to a file (translation metadata goes to stdout)
+python translate.py example/qasm/bell_state_v2.qasm -o bell.ll
+
+# JSON output for CI / scripting (includes "source_format": "openqasm2")
+python translate.py example/qasm/bell_state_v2.qasm --json
+```
+
+Expected output for the Bell state (`bell_state_v2.qasm`):
+
+```text
+  Source format    : openqasm2 (converted to Quake MLIR via Qiskit + CUDA-Q)
+
+── Translation Metadata ────────────────────────────
+  Dialect          : quake
+  Translation path : deterministic
+
+── Gate Counts ─────────────────────────────────────
+  Total              2     2  ✓ match
+
+── Simulation Verification ─────────────────────────
+  MLIR backend     : quake (QuakeRunner) (real execution)
+  Gate match       : PASS
+  TVD similarity   : 96.2%  PASS          # varies slightly with shot noise
+  QIR distribution : 00:525  11:475
+  MLIR distribution: 00:487  11:513
+
+✓ SUCCESS — translation verified
+```
+
+From Python:
+
+```python
+import agentic_mlir_qir as amq
+
+qasm = open("example/qasm/bell_state_v2.qasm").read()
+res = amq.translate_qasm(qasm, verify=True, shots=2000)
+
+print(res.source_format, res.dialect, res.success)   # openqasm2 quake True
+print(res.verification.similarity)                    # ~0.96–1.0 (shot-noise dependent)
+print(res.qir)                                         # the generated QIR (LLVM IR)
+```
+
+Supported gates: `h x y z s t sdg tdg rx ry rz p/u1 u3 cx cy cz ch swap
+crx cry crz cp ccx cswap` (others raise a clear error).
+
 ### 5. Run the Streamlit demo (optional)
 
 ```bash
-streamlit run src/ui/app.py
+streamlit run agentic_mlir_qir/ui/app.py
 ```
 
 ---
@@ -167,7 +240,7 @@ If you use this codebase, please cite:
 @inproceedings{afrose2026agentic,
   author    = {Sharmin Afrose and Vicente Leyton-Ortega and Narasinga Rao Miniskar and Elaine Wong and Travis S. Humble},
   title     = {Agentic MLIR-to-QIR Translation with Verification: A Hybrid Deterministic and LLM Approach},
-  booktitle = {2026 IEEE International Conference on Quantum Computing and Engineering (QCE)},
+  booktitle = {Submitted to 2026 IEEE International Conference on Quantum Computing and Engineering (QCE)},
   year      = {2026}
 }
 ```

@@ -156,6 +156,15 @@ def load_examples():
         except Exception as e:
             logger.error(f"Error loading {file_path}: {e}")
 
+    # OpenQASM examples (converted to Quake MLIR on translate)
+    for file_path in sorted(Path("example/qasm").glob("*.qasm")):
+        try:
+            stem = file_path.stem.replace("_", " ").title()
+            name = f"[QASM] {stem}"
+            examples[name] = file_path.read_text()
+        except Exception as e:
+            logger.error(f"Error loading {file_path}: {e}")
+
     return examples
 
 
@@ -557,10 +566,10 @@ def render_translation_section(config):
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        st.subheader("📝 Input MLIR Code")
+        st.subheader("📝 Input MLIR / OpenQASM Code")
 
         mlir_input = st.text_area(
-            "Paste MLIR circuit here (Catalyst, Quake, or other dialect)",
+            "Paste MLIR (Catalyst, Quake, or other dialect) or OpenQASM 2.0/3.0 code here",
             value=st.session_state.mlir_input,
             height=600,
             key="mlir_text_area",
@@ -582,6 +591,30 @@ def render_translation_section(config):
 
     # Translation execution
     if translate_btn and mlir_input.strip():
+        # OpenQASM auto-routing: convert QASM 2.0/3.0 to Quake MLIR up front so
+        # the rest of the pipeline (validate → parse → QIR → verify) is unchanged.
+        try:
+            from agentic_mlir_qir.frontends.qasm_frontend import (
+                is_qasm as _is_qasm,
+                detect_qasm_version as _qasm_version,
+                qasm_to_mlir as _qasm_to_mlir,
+            )
+            _qasm_available = True
+        except ImportError:
+            _qasm_available = False
+
+        if _qasm_available and _is_qasm(mlir_input):
+            try:
+                _ver = _qasm_version(mlir_input)
+                mlir_input = _qasm_to_mlir(mlir_input)
+                st.info(
+                    f"Detected OpenQASM {_ver}.x — converted to Quake MLIR via "
+                    "Qiskit + CUDA-Q before translation."
+                )
+            except Exception as exc:
+                st.error(f"OpenQASM → MLIR conversion failed: {exc}")
+                st.stop()
+
         if not _is_valid_mlir(mlir_input):
             st.error(
                 "Input does not appear to be a valid MLIR quantum circuit. "

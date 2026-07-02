@@ -37,6 +37,7 @@ __version__ = "0.1.0"
 __all__ = [
     "__version__",
     "translate",
+    "translate_qasm",
     "TranslateResult",
     "VerificationSummary",
     # Lower-level building blocks (re-exported for advanced users)
@@ -134,6 +135,7 @@ class TranslateResult:
     iterations: int = 1
     error: Optional[str] = None
     verification: Optional[VerificationSummary] = None
+    source_format: str = "mlir"  # "mlir", "openqasm2", or "openqasm3"
 
 
 def _wrap_verification(vr: Optional[dict]) -> Optional[VerificationSummary]:
@@ -294,4 +296,60 @@ def translate(
         if vr.get("error"):
             result.error = vr["error"]
 
+    return result
+
+
+def translate_qasm(
+    qasm_source: str,
+    *,
+    verify: bool = False,
+    shots: int = 1000,
+    mode: str = "shots",
+) -> TranslateResult:
+    """Translate an OpenQASM 2.0/3.0 circuit to QIR.
+
+    The QASM source is converted to Quake-dialect MLIR using the existing
+    Qiskit + CUDA-Q toolchain (see
+    :mod:`agentic_mlir_qir.frontends.qasm_frontend`), then handed to the same
+    deterministic :func:`translate` pipeline as native MLIR input. The result's
+    :attr:`TranslateResult.source_format` records the detected QASM version.
+
+    Parameters
+    ----------
+    qasm_source : str
+        OpenQASM source code (the contents of a .qasm file, not a path).
+    verify : bool, default False
+        Run the dual-backend verification pipeline (Quake-side CUDA-Q
+        simulator vs. QIR runner). Requires the ``verify`` and ``quake`` extras.
+    shots : int, default 1000
+        Number of shots for sampled simulation verification.
+    mode : {"shots", "probs"}, default "shots"
+        Verification mode, forwarded to :func:`translate`.
+
+    Returns
+    -------
+    TranslateResult
+        With ``dialect == "quake"`` and ``source_format`` in
+        ``{"openqasm2", "openqasm3"}``.
+
+    Raises
+    ------
+    ValueError
+        ``qasm_source`` is empty or is not a recognisable OpenQASM program.
+    RuntimeError
+        The ``qasm`` extra (qiskit / qiskit-qasm3-import / cuda-quantum) is not
+        installed.
+    UnsupportedQASMGateError
+        A gate in the program has no CUDA-Q kernel-builder mapping.
+    """
+    if not qasm_source or not qasm_source.strip():
+        raise ValueError("qasm_source is empty")
+
+    from .frontends.qasm_frontend import detect_qasm_version, qasm_to_mlir
+
+    version = detect_qasm_version(qasm_source)  # raises ValueError if not QASM
+    mlir_source = qasm_to_mlir(qasm_source)
+
+    result = translate(mlir_source, verify=verify, shots=shots, mode=mode)
+    result.source_format = f"openqasm{version}"
     return result

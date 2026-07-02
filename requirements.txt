@@ -19,6 +19,9 @@ langchain-community>=0.0.25,<0.1.0
 # pennylane-catalyst==0.14.0
 # cuda-quantum==0.13         (Quake MLIR-side simulator)
 qiskit==0.46.0
+# OpenQASM 2.0/3.0 input frontend (QASM -> Quake MLIR via Qiskit + CUDA-Q):
+#   qiskit==0.46.0 (above) + cuda-quantum==0.13 + qiskit-qasm3-import (QASM 3 only)
+qiskit-qasm3-import>=0.6.0
 
 # ============================================================
 # Data / utilities

@@ -512,6 +512,37 @@ def main() -> int:
         print(f"{RED('Error:')} empty input", file=sys.stderr)
         return 1
 
+    # ── OpenQASM auto-routing ──────────────────────────────────────────────────
+    # A .qasm file (or any input whose first significant line is an OPENQASM
+    # header) is converted to Quake-dialect MLIR up front, so the rest of the
+    # pipeline (deterministic parse → QIR → verification) runs unchanged.
+    source_format = "mlir"
+    is_qasm_input = args.input.endswith(".qasm") if args.input != "-" else False
+    try:
+        from agentic_mlir_qir.frontends.qasm_frontend import is_qasm as _is_qasm
+        is_qasm_input = is_qasm_input or _is_qasm(mlir_code)
+    except ImportError:
+        pass  # frontend deps missing; the .qasm-suffix check below still applies
+
+    if is_qasm_input:
+        try:
+            from agentic_mlir_qir.frontends.qasm_frontend import (
+                detect_qasm_version,
+                qasm_to_mlir,
+            )
+            source_format = f"openqasm{detect_qasm_version(mlir_code)}"
+            mlir_code = qasm_to_mlir(mlir_code)
+        except ImportError:
+            print(
+                f"{RED('Error:')} OpenQASM input needs the 'qasm' extra — "
+                "install with: pip install 'agentic-mlir-qir[qasm]'.",
+                file=sys.stderr,
+            )
+            return 1
+        except Exception as exc:
+            print(f"{RED('Error:')} QASM→MLIR conversion failed: {exc}", file=sys.stderr)
+            return 1
+
     # When QIR goes to a file, metadata prints to stdout; otherwise metadata → stderr
     meta_stream = sys.stdout if (args.output or args.json) else sys.stderr
 
@@ -618,6 +649,7 @@ def main() -> int:
             "timestamp": datetime.now().isoformat(),
             "session_id": "cli",
             "source": args.input,
+            "source_format": source_format,
             "model": args.model or "deterministic",
             "dialect": result.get("dialect", "unknown"),
             "translation_time_s": elapsed,
@@ -642,6 +674,7 @@ def main() -> int:
     if args.json:
         payload = {
             "qir":               qir_code,
+            "source_format":     source_format,
             "dialect":           result.get("dialect", "unknown"),
             "translation_path":  result.get("translation_path", "deterministic"),
             "translation_time_s": translation_time_s,
@@ -658,6 +691,12 @@ def main() -> int:
 
     # ── Human-readable metadata ────────────────────────────────────────────────
     if not args.quiet:
+        if source_format != "mlir":
+            print(
+                f"  Source format    : {CYAN(source_format)} "
+                f"{_c('90', '(converted to Quake MLIR via Qiskit + CUDA-Q)')}",
+                file=meta_stream,
+            )
         _print_metadata(
             meta_stream,
             dialect=result.get("dialect", "unknown"),

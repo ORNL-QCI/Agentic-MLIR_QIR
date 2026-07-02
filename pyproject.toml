@@ -66,6 +66,15 @@ quake = [
   "cuda-quantum==0.13",
 ]
 
+# --- OpenQASM 2.0/3.0 input frontend (QASM -> Quake MLIR) -------------------
+# Qiskit parses the QASM; CUDA-Q rebuilds the circuit and emits Quake MLIR
+# that the existing deterministic pipeline translates to QIR.
+qasm = [
+  "qiskit==0.46.0",
+  "qiskit-qasm3-import>=0.6.0",
+  "cuda-quantum==0.13",
+]
+
 # --- Streamlit demo UI -----------------------------------------------------
 ui = [
   "streamlit==1.31.0",
@@ -81,7 +90,7 @@ dev = [
 
 # --- Convenience: install everything ---------------------------------------
 all = [
-  "agentic-mlir-qir[agentic,verify,quake,ui,dev]",
+  "agentic-mlir-qir[agentic,verify,quake,qasm,ui,dev]",
 ]
 
 [project.scripts]
