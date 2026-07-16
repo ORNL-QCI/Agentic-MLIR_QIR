@@ -91,6 +91,27 @@ class LLMConfig:
             api_key_env='HF_TOKEN',
             free_tier=True,
         ),
+
+        # Llama 3.1 8B via the HuggingFace Inference API (no local Ollama).
+        # NOTE: meta-llama models are GATED — before this key works you must
+        # (1) accept Meta's license on the model page
+        #     https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct and
+        # (2) be granted access on the HF account tied to your HF_TOKEN.
+        # Serverless/free hosting is not guaranteed (HF routes through
+        # Inference Providers and may charge); for a guaranteed-free portable
+        # model prefer 'gpt-oss-20b'.
+        'llama3.1-8b-hf': ModelInfo(
+            size='8B',
+            quantization='none',
+            vram='cloud',
+            quality='good',
+            speed='fast',
+            recommended_for='portable agentic path without Ollama (gated model; requires HF access approval)',
+            ollama_name='meta-llama/Llama-3.1-8B-Instruct',  # HF model ID
+            provider='huggingface',
+            api_key_env='HF_TOKEN',
+            free_tier=False,
+        ),
     }
 
     @classmethod

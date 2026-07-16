@@ -32,13 +32,13 @@ Verification: A Hybrid Deterministic and LLM Approach" (IEEE QCE 2026).
 │   └── README.md               # Code architecture
 ├── experiments/                # Experiment scripts (E1, E2, E3, E4) and analysis
 │   └── README.md               # How to run each experiment
-├── example/                    # Benchmark circuit suite (38 circuits)
-│   ├── catalyst_mlir/          # Catalyst-dialect MLIR inputs
-│   ├── quake_mlir/             # Quake-dialect MLIR inputs
-│   ├── ftqc_mlir/              # FTQC-dialect MLIR inputs (unseen dialect)
-│   ├── qasm/                   # OpenQASM 2.0/3.0 inputs (via Qiskit + CUDA-Q)
+├── example/                    # Benchmark circuit suite (34 MLIR + 3 OpenQASM inputs)
+│   ├── catalyst_mlir/          # Catalyst-dialect MLIR inputs (14)
+│   ├── quake_mlir/             # Quake-dialect MLIR inputs (16)
+│   ├── ftqc_mlir/              # FTQC-dialect MLIR inputs, unseen dialect (4)
+│   ├── qasm/                   # OpenQASM 2.0/3.0 inputs, via Qiskit + CUDA-Q (3)
 │   └── qir/                    # Reference QIR ground truth
-├── scripts/                    # Helper utilities (Qiskit-QIR ground-truth generator, Ollama setup)
+├── scripts/                    # Helper utilities (setup.sh env bootstrap, Qiskit-QIR ground-truth generator)
 ├── requirements.txt
 ├── .env.example                # Template for API keys (HF_TOKEN, etc.)
 └── README.md
@@ -47,6 +47,28 @@ Verification: A Hybrid Deterministic and LLM Approach" (IEEE QCE 2026).
 ---
 
 ## Quick start
+
+### Fresh clone (one command)
+
+After cloning, run the setup script — it creates a virtual environment,
+installs all Python dependencies, installs CUDA-Q where supported (Linux
+x86_64/aarch64), and creates a `.env` file:
+
+```bash
+bash scripts/setup.sh
+source venv/bin/activate
+# Then edit .env and set HF_TOKEN=hf_...  (only needed for the agentic path)
+```
+
+What works after that, per platform:
+
+| Capability                          | Needs                | Linux | macOS / Windows |
+|-------------------------------------|----------------------|:-----:|:---------------:|
+| Deterministic MLIR → QIR            | requirements.txt     |  ✅   |       ✅        |
+| OpenQASM → QIR + Quake verification | CUDA-Q (`cudaq`)     |  ✅   |       ❌        |
+| Agentic path (unseen dialects)      | `HF_TOKEN` in `.env` |  ✅   |       ✅        |
+
+The manual steps below are equivalent to what `scripts/setup.sh` automates.
 
 ### 1. Install Python dependencies
 
@@ -66,22 +88,38 @@ pip install qirrunner==0.9.1
 
 ### 3. (Optional) Install LLM backends
 
-The agentic path requires either a local Ollama instance or a HuggingFace
-token. Both are optional — the deterministic path works without any LLM.
+The agentic path (unseen dialects such as FTQC) requires either a local
+Ollama instance **or** a HuggingFace token. Both are optional — the
+deterministic path works without any LLM.
 
-**Local LLMs via Ollama:**
-
-```bash
-# Install Ollama: https://ollama.com/download
-bash scripts/setup_llm.sh        # Pulls Llama 3.1 8B, Code Llama 13B, etc.
-```
-
-**HuggingFace cloud LLMs:**
+**HuggingFace cloud LLMs (portable, no local GPU):**
 
 ```bash
 cp .env.example .env
-# Edit .env and set HF_TOKEN=<your free HuggingFace token>
+# Edit .env and set HF_TOKEN=<your HuggingFace token from
+# https://huggingface.co/settings/tokens>
 ```
+
+Two cloud models are registered:
+
+| Model key         | HF model                          | Access                                   |
+|-------------------|-----------------------------------|------------------------------------------|
+| `gpt-oss-20b`     | `openai/gpt-oss-20b`              | Open-weight, free tier — **recommended** |
+| `llama3.1-8b-hf`  | `meta-llama/Llama-3.1-8B-Instruct`| **Gated**: accept Meta's license and get access approved on the account tied to your `HF_TOKEN`; free serverless hosting not guaranteed |
+
+```bash
+python translate.py example/ftqc_mlir/steane_2q_bell.mlir --model gpt-oss-20b
+```
+
+**Local LLMs via Ollama (needs a local GPU):**
+
+```bash
+# Install Ollama: https://ollama.com/download
+ollama pull llama3.1:8b                    # or codellama:13b-instruct, etc.
+python translate.py example/ftqc_mlir/steane_2q_bell.mlir --model llama3.1-8b
+```
+
+Run `python translate.py --list-models` to see all model keys.
 
 ### 4. Run a translation
 
@@ -109,13 +147,13 @@ existing tools: **Qiskit** parses the QASM and **CUDA-Q** emits Quake-dialect
 MLIR, which then flows through the same deterministic MLIR → QIR pipeline.
 
 The QASM frontend needs three packages. `qiskit` and `qiskit-qasm3-import`
-are already in `requirements.txt` (installed in step 1); CUDA-Q is installed
-the same way as the Quake verification backend:
+are already in `requirements.txt` (installed in step 1); CUDA-Q ships as the
+`cudaq` wheel (Linux x86_64/aarch64 only):
 
 ```bash
 # Qiskit + the OpenQASM 3 loader come from requirements.txt (step 1).
-# Add CUDA-Q (see https://nvidia.github.io/cuda-quantum for your platform):
-pip install cuda-quantum==0.13
+# Add CUDA-Q (Linux only); or run `bash scripts/setup.sh` to do everything:
+pip install cudaq==0.13.0     # equivalently: pip install -e '.[qasm]'
 
 # Translate an OpenQASM 2.0 circuit (with dual-backend verification)
 python translate.py example/qasm/bell_state_v2.qasm
@@ -179,38 +217,6 @@ crx cry crz cp ccx cswap` (others raise a clear error).
 ```bash
 streamlit run agentic_mlir_qir/ui/app.py
 ```
-
----
-
-## Reproducing paper experiments
-
-The four experiments reported in the paper (E1, E2, E3, E4) each have a
-shell driver under `experiments/`:
-
-| Experiment | Script                                  | Wall time     |
-|------------|-----------------------------------------|---------------|
-| E1 — Translation Correctness            | `experiments/run_e1_correctness.sh`     | ~30 min       |
-| E2 — Scalability                        | `experiments/run_e2_scalability.sh`     | ~20 min       |
-| E3 — Cross-Dialect Portability          | `experiments/run_e3_cross_dialect.sh`   | ~10 min       |
-| E4 — Unseen-Dialect Translation (FTQC)  | `experiments/run_e4_unseen_dialect.sh`  | 2–4 h (LLM)   |
-
-A smoke test that exercises every translation path in roughly two minutes is
-available at `experiments/run_smoke_test.sh`. See
-[experiments/README.md](experiments/README.md) for full details, expected
-outputs, and analysis commands.
-
----
-
-## Hardware used in the paper
-
-* NVIDIA RTX 6000 Ada GPU (48 GB VRAM)
-* Intel Xeon w5-2465X CPU
-* 256 GB RAM
-* Ubuntu 22.04, Python 3.12
-
-The deterministic path runs comfortably on a CPU-only laptop; the agentic
-path needs a GPU large enough for the chosen Ollama model (≈ 6 GB for
-Llama 3.1 8B, ≈ 40 GB for Llama 3.1 70B).
 
 ---
 

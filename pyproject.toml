@@ -69,10 +69,11 @@ quake = [
 # --- OpenQASM 2.0/3.0 input frontend (QASM -> Quake MLIR) -------------------
 # Qiskit parses the QASM; CUDA-Q rebuilds the circuit and emits Quake MLIR
 # that the existing deterministic pipeline translates to QIR.
+# NOTE: the `cudaq` wheels are published for Linux x86_64/aarch64 only.
 qasm = [
   "qiskit==0.46.0",
   "qiskit-qasm3-import>=0.6.0",
-  "cuda-quantum==0.13",
+  "cudaq==0.13.0",
 ]
 
 # --- Streamlit demo UI -----------------------------------------------------

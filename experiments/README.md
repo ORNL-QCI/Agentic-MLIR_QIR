@@ -18,10 +18,14 @@ pip install -r requirements.txt qirrunner==0.9.1
 For E4 only, an LLM backend is required:
 
 ```bash
-# Option A: local Ollama (recommended; reproduces all five models in the paper)
-bash scripts/setup_llm.sh
+# Option A: local Ollama (reproduces the local models used in the paper)
+# Install Ollama (https://ollama.com/download), then pull the models:
+ollama pull llama3.1:8b
+ollama pull llama3.1:70b-instruct-q4_K_M
+ollama pull codellama:13b-instruct
+ollama pull codellama:34b-instruct-q4_K_M
 
-# Option B: HuggingFace cloud model only
+# Option B: HuggingFace cloud model only (no local GPU)
 cp .env.example .env  # then edit and set HF_TOKEN=<your token>
 ```
 
