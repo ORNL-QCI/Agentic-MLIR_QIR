@@ -62,11 +62,11 @@ source venv/bin/activate
 
 What works after that, per platform:
 
-| Capability                          | Needs                | Linux | macOS / Windows |
-|-------------------------------------|----------------------|:-----:|:---------------:|
-| Deterministic MLIR → QIR            | requirements.txt     |  ✅   |       ✅        |
-| OpenQASM → QIR + Quake verification | CUDA-Q (`cudaq`)     |  ✅   |       ❌        |
-| Agentic path (unseen dialects)      | `HF_TOKEN` in `.env` |  ✅   |       ✅        |
+| Capability                           | Needs                    | Linux | macOS / Windows |
+| ------------------------------------ | ------------------------ | :---: | :-------------: |
+| Deterministic MLIR → QIR            | requirements.txt         |  ✅  |       ✅       |
+| OpenQASM → QIR + Quake verification | CUDA-Q (`cudaq`)       |  ✅  |       ❌       |
+| Agentic path (unseen dialects)       | `HF_TOKEN` in `.env` |  ✅  |       ✅       |
 
 The manual steps below are equivalent to what `scripts/setup.sh` automates.
 
@@ -100,12 +100,13 @@ cp .env.example .env
 # https://huggingface.co/settings/tokens>
 ```
 
-Two cloud models are registered:
+Three cloud models are registered:
 
-| Model key         | HF model                          | Access                                   |
-|-------------------|-----------------------------------|------------------------------------------|
-| `gpt-oss-20b`     | `openai/gpt-oss-20b`              | Open-weight, free tier — **recommended** |
-| `llama3.1-8b-hf`  | `meta-llama/Llama-3.1-8B-Instruct`| **Gated**: accept Meta's license and get access approved on the account tied to your `HF_TOKEN`; free serverless hosting not guaranteed |
+| Model key          | HF model                             | Access                                                                                                                                          |
+| ------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gpt-oss-20b`    | `openai/gpt-oss-20b`               | Open-weight, free tier —**recommended**                                                                                                  |
+| `llama3.1-8b-hf` | `meta-llama/Llama-3.1-8B-Instruct` | **Gated**: accept Meta's license and get access approved on the account tied to your `HF_TOKEN`; free serverless hosting not guaranteed |
+| `gemma4-31b-hf`  | `google/gemma-4-31B-it`            | Open-weight (Apache 2.0), **not gated** — no access approval; free serverless hosting not guaranteed |
 
 ```bash
 python translate.py example/ftqc_mlir/steane_2q_bell.mlir --model gpt-oss-20b
@@ -209,8 +210,7 @@ print(res.verification.similarity)                    # ~0.96–1.0 (shot-noise 
 print(res.qir)                                         # the generated QIR (LLVM IR)
 ```
 
-Supported gates: `h x y z s t sdg tdg rx ry rz p/u1 u3 cx cy cz ch swap
-crx cry crz cp ccx cswap` (others raise a clear error).
+Supported gates: `h x y z s t sdg tdg rx ry rz p/u1 u3 cx cy cz ch swap crx cry crz cp ccx cswap` (others raise a clear error).
 
 ### 5. Run the Streamlit demo (optional)
 
@@ -222,15 +222,15 @@ streamlit run agentic_mlir_qir/ui/app.py
 
 ## Software versions
 
-| Package              | Version  |
-|----------------------|----------|
-| PennyLane            | 0.44.0   |
-| PennyLane-Catalyst   | 0.14.0   |
-| CUDA-Q               | 0.13     |
-| qir-runner           | 0.9.1    |
-| CrewAI               | 1.10.0   |
-| Ollama               | 0.6      |
-| Python               | 3.12     |
+| Package            | Version |
+| ------------------ | ------- |
+| PennyLane          | 0.44.0  |
+| PennyLane-Catalyst | 0.14.0  |
+| CUDA-Q             | 0.13    |
+| qir-runner         | 0.9.1   |
+| CrewAI             | 1.10.0  |
+| Ollama             | 0.6     |
+| Python             | 3.12    |
 
 The pinned versions used in the paper are recorded in `requirements.txt`.
 `qir-runner` and CrewAI are under active development; later releases may
@@ -283,7 +283,7 @@ the published form of this manuscript, or allow others to do so, for United
 States Government purposes. The Department of Energy will provide public
 access to these results of federally sponsored research in accordance with the
 DOE Public Access Plan
-(<https://www.energy.gov/doe-public-access-plan>).
+([https://www.energy.gov/doe-public-access-plan](https://www.energy.gov/doe-public-access-plan)).
 
 ### Authors and affiliation
 

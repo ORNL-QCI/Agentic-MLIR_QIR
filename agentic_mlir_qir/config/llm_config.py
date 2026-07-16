@@ -112,6 +112,24 @@ class LLMConfig:
             api_key_env='HF_TOKEN',
             free_tier=False,
         ),
+
+        # Google Gemma 4 (latest Gemma; flagship 31B dense instruct) via the
+        # HuggingFace Inference API — no local Ollama.
+        # Open-weight (Apache 2.0), NOT gated — no license acceptance or access
+        # approval needed. Free serverless hosting is still not guaranteed (HF
+        # routes through Inference Providers and may charge).
+        'gemma4-31b-hf': ModelInfo(
+            size='31B',
+            quantization='none',
+            vram='cloud',
+            quality='excellent',
+            speed='medium',
+            recommended_for='portable agentic path without Ollama (open-weight Apache 2.0, not gated)',
+            ollama_name='google/gemma-4-31B-it',  # HF model ID
+            provider='huggingface',
+            api_key_env='HF_TOKEN',
+            free_tier=False,
+        ),
     }
 
     @classmethod
