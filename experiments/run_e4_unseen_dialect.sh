@@ -15,7 +15,7 @@ mkdir -p "$RESULTS_DIR"
 
 SHOTS=1000
 REPEATS=3
-MODELS=(llama3.1-8b llama3.1-70b-q4 codellama-13b codellama-34b-q4 gpt-oss-20b)
+MODELS=(llama3.1-8b llama3.1-70b-q4 codellama-13b codellama-34b-q4 gpt-oss-20b gemma4-31b-hf)
 
 # FTQC circuits (unseen dialect — deterministic path will fail with exit 2)
 FTQC_DIR="example/ftqc_mlir"

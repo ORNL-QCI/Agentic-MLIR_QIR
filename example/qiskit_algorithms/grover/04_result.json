@@ -1,0 +1,77 @@
+{
+  "qir": "; ModuleID = 'translated-circuit'\nsource_filename = \"translated-circuit\"\n\n%Qubit = type opaque\n%Result = type opaque\n\ndefine void @main() #0 {\nentry:\n  call void @__quantum__rt__initialize(i8* null)\n  call void @__quantum__qis__h__body(%Qubit* null)\n  call void @__quantum__qis__h__body(%Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__ry__body(double 1.570796e+00, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* null)\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__x__body(%Qubit* null)\n  call void @__quantum__qis__x__body(%Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -2.356194e+00, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__ry__body(double 3.141593e+00, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* null)\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -3.141593e+00, %Qubit* null)\n  call void @__quantum__qis__ry__body(double -1.570796e+00, %Qubit* null)\n  call void @__quantum__qis__rz__body(double -3.141593e+00, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__ry__body(double -1.570796e+00, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double 7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__ry__body(double 1.570796e+00, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__t__body(%Qubit* null)\n  call void @__quantum__qis__rz__body(double -7.853982e-01, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__cnot__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__ry__body(double -1.570796e+00, %Qubit* null)\n  call void @__quantum__qis__ry__body(double -1.570796e+00, %Qubit* inttoptr (i64 1 to %Qubit*))\n  call void @__quantum__qis__rz__body(double 7.853982e-01, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__ry__body(double -1.570796e+00, %Qubit* inttoptr (i64 2 to %Qubit*))\n  call void @__quantum__qis__mz__body(%Qubit* null, %Result* null)\n  call void @__quantum__qis__mz__body(%Qubit* inttoptr (i64 1 to %Qubit*), %Result* inttoptr (i64 1 to %Result*))\n  call void @__quantum__qis__mz__body(%Qubit* inttoptr (i64 2 to %Qubit*), %Result* inttoptr (i64 2 to %Result*))\n  call void @__quantum__rt__array_record_output(i64 3, i8* null)\n  call void @__quantum__rt__result_record_output(%Result* null, i8* null)\n  call void @__quantum__rt__result_record_output(%Result* inttoptr (i64 1 to %Result*), i8* null)\n  call void @__quantum__rt__result_record_output(%Result* inttoptr (i64 2 to %Result*), i8* null)\n  ret void\n}\n\n\ndeclare void @__quantum__rt__initialize(i8*)\n\ndeclare void @__quantum__qis__h__body(%Qubit*)\ndeclare void @__quantum__qis__ry__body(double, %Qubit*)\ndeclare void @__quantum__qis__cnot__body(%Qubit*, %Qubit*)\ndeclare void @__quantum__qis__rz__body(double, %Qubit*)\ndeclare void @__quantum__qis__t__body(%Qubit*)\ndeclare void @__quantum__qis__x__body(%Qubit*)\n\ndeclare void @__quantum__qis__mz__body(%Qubit*, %Result* writeonly) #1\n\n\n\ndeclare void @__quantum__rt__array_record_output(i64, i8*)\n\ndeclare void @__quantum__rt__result_record_output(%Result*, i8*)\n\n\nattributes #0 = { \"entry_point\" \"output_labeling_schema\" \"qir_profiles\"=\"custom\" \"required_num_qubits\"=\"3\" \"required_num_results\"=\"3\" }\nattributes #1 = { \"irreversible\" }\n\n\n!llvm.module.flags = !{!0, !1, !2, !3}\n\n!0 = !{i32 1, !\"qir_major_version\", i32 1}\n!1 = !{i32 7, !\"qir_minor_version\", i32 0}\n!2 = !{i32 1, !\"dynamic_qubit_management\", i1 false}\n!3 = !{i32 1, !\"dynamic_result_management\", i1 false}\n",
+  "source_format": "mlir",
+  "dialect": "quake",
+  "translation_path": "deterministic",
+  "translation_time_s": 0.0013692378997802734,
+  "verification_time_s": 5.197526931762695,
+  "total_time_s": 5.198896169662476,
+  "iterations": 1,
+  "success": true,
+  "error_message": null,
+  "gate_comparison": {
+    "matches": true,
+    "similarity": 1.0,
+    "mlir_total": 53,
+    "qir_total": 53,
+    "discrepancies": [],
+    "mlir_gates": {
+      "h": 2,
+      "t": 9,
+      "cnot": 18,
+      "x": 2,
+      "ry": 8,
+      "rz": 14
+    },
+    "qir_gates": {
+      "h": 2,
+      "ry": 8,
+      "cnot": 18,
+      "rz": 14,
+      "t": 9,
+      "x": 2
+    }
+  },
+  "verification": {
+    "success": true,
+    "error": null,
+    "qir_distribution": {
+      "001": 49690,
+      "110": 50310
+    },
+    "catalyst_distribution": {
+      "110": 503,
+      "001": 497
+    },
+    "similarity": 0.9999,
+    "similarity_passes": true,
+    "gate_comparison": {
+      "matches": true,
+      "similarity": 1.0,
+      "mlir_total": 53,
+      "qir_total": 53,
+      "discrepancies": [],
+      "mlir_gates": {
+        "h": 2,
+        "t": 9,
+        "cnot": 18,
+        "x": 2,
+        "ry": 8,
+        "rz": 14
+      },
+      "qir_gates": {
+        "h": 2,
+        "ry": 8,
+        "cnot": 18,
+        "rz": 14,
+        "t": 9,
+        "x": 2
+      }
+    },
+    "qir_is_mock": false,
+    "catalyst_is_mock": false,
+    "mlir_runner_label": "quake (QuakeRunner)",
+    "mlir_execution_skipped": false,
+    "verification_mode": "shots (fallback)"
+  }
+}

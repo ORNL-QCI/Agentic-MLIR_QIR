@@ -1,5 +1,6 @@
 """LLM model configuration and management."""
 
+import os
 from typing import Dict, Optional
 from dataclasses import dataclass, field
 
@@ -131,6 +132,40 @@ class LLMConfig:
             free_tier=False,
         ),
     }
+
+    # ── Default model for the agentic route ──────────────────────────────────
+    # Preference order, strongest first. ``resolve_default_model`` walks this
+    # chain and returns the first entry whose credentials are present, so the
+    # UI never opens on a model the environment cannot reach.
+    DEFAULT_MODEL: str = 'gemma4-31b-hf'
+    DEFAULT_MODEL_CHAIN: tuple[str, ...] = (
+        'gemma4-31b-hf',   # 31B, HuggingFace  — needs HF_TOKEN
+        'gpt-oss-20b',     # 20B, HuggingFace  — needs HF_TOKEN, free tier
+        'llama3.1-8b',     #  8B, local Ollama — no credentials
+    )
+
+    @classmethod
+    def has_credentials(cls, model_key: str) -> bool:
+        """Return True if the env var this model needs is set.
+
+        Offline check only: it confirms credentials exist, not that the
+        provider is currently serving the model. Ollama models need no
+        credentials and always pass.
+        """
+        info = cls.MODELS.get(model_key)
+        if info is None:
+            return False
+        if not info.api_key_env:
+            return True
+        return bool(os.environ.get(info.api_key_env))
+
+    @classmethod
+    def resolve_default_model(cls) -> str:
+        """Return the first model in DEFAULT_MODEL_CHAIN with credentials set."""
+        for key in cls.DEFAULT_MODEL_CHAIN:
+            if cls.has_credentials(key):
+                return key
+        return cls.DEFAULT_MODEL
 
     @classmethod
     def get_model_info(cls, model_key: str) -> Optional[ModelInfo]:

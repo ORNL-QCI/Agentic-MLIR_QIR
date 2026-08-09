@@ -4,6 +4,13 @@ Instead of asking the LLM to call a RAG tool (which small models fail at),
 we inject the gate mappings and translation patterns directly into the prompt.
 This follows the "context engineering" approach: pre-compute relevant context,
 inject it, and let the agent focus on reasoning rather than retrieval.
+
+The reference is dialect-conditional: Catalyst- and Quake-specific guidance
+(register-extraction syntax, non-gate scaffolding ops) is only injected when
+translating that dialect. Bloating every prompt with dialect-specific detail
+irrelevant to the circuit being translated (e.g. Catalyst notes injected while
+translating an unrelated FTQC circuit) measurably degrades smaller models —
+see the FTQC regression this was introduced to fix.
 """
 
 # ── Gate Mapping Table ────────────────────────────────────────────────────────
@@ -93,12 +100,9 @@ call void @__quantum__qis__cz__body(%Qubit* null, %Qubit* inttoptr (i64 1 to %Qu
 ```
 """
 
-# ── Translation Patterns ─────────────────────────────────────────────────────
-TRANSLATION_PATTERNS = """\
+# ── Core Translation Patterns (dialect-agnostic, always injected) ─────────────
+CORE_PATTERNS = """\
 ## Key Translation Patterns
-
-### Qubit Allocation
-MLIR `quantum.alloc(N)` + `quantum.extract %reg[i]` → QIR uses static qubit pointers (no allocation call needed).
 
 ### Gate Sequencing
 MLIR SSA: `%out = quantum.custom "Hadamard"() %q0` → QIR: `call void @__quantum__qis__h__body(%Qubit* null)`
@@ -148,6 +152,7 @@ Matching rules (generic across any dialect):
 4. The qubit count equals the number of qubits allocated or initialized in the source MLIR. Do not invent extra qubits.
 5. Emit exactly one `mz` measurement per measured qubit. Do not duplicate.
 6. Any `init_zero` or similar "prepare |0>" op is implicit in QIR — emit no gate call for it.
+7. `extract`, `extract_ref`, `alloc`, `alloca` are register bookkeeping, not gates — emit no QIR call for them.
 
 ### SSA-Form MLIR: Multi-Result Gate Operations
 
@@ -188,7 +193,102 @@ Strict rules:
 If you simplify or substitute, the verification pipeline WILL detect the mismatch and reject your output. Translate faithfully.
 """
 
+# ── Catalyst-specific patterns (only injected for dialect == "catalyst") ──────
+CATALYST_PATTERNS = """\
+### Catalyst Qubit Register Extraction (CRITICAL — most common indexing error)
 
-def get_qir_reference_context() -> str:
-    """Return the full QIR reference to inject into the translation prompt."""
-    return f"{GATE_MAPPINGS}\n{QIR_TEMPLATE}\n{TRANSLATION_PATTERNS}"
+Catalyst allocates a qubit **register** and then extracts individual qubit
+handles from it. The extraction op is NOT a gate — never emit a QIR call for
+it. The physical qubit index is the LITERAL INTEGER inside the brackets
+`[...]`, never the SSA variable's own number.
+
+```
+%0 = quantum.alloc(2) : !quantum.reg
+%1 = quantum.extract %0[0] : !quantum.reg -> !quantum.bit   ; %1 IS qubit 0 (index in brackets, NOT "1")
+%out_qubits = quantum.custom "Hadamard"() %1 : !quantum.bit ; H on qubit 0 (same physical qubit as %1)
+%2 = quantum.extract %0[1] : !quantum.reg -> !quantum.bit   ; %2 IS qubit 1
+%out_qubits_0:2 = quantum.custom "CNOT"() %out_qubits, %2 : !quantum.bit, !quantum.bit
+  ; CNOT(control=qubit 0, target=qubit 1) — control is %out_qubits (still qubit 0), target is %2 (qubit 1)
+```
+Correct QIR: `h 0` then `cnot 0 1`. WRONG (common mistake): `h 1` — do NOT use the
+SSA variable's numeric suffix (`%1`, `%2`) as the qubit index. Only the number
+inside `quantum.extract %reg[N]` is the qubit index. A qubit keeps its index
+through every gate that consumes and re-produces its SSA handle (e.g.
+`%out_qubits` after H is still qubit 0).
+
+### Catalyst Non-Gate Ops (CRITICAL — ignore these completely)
+
+Real Catalyst MLIR (as opposed to a simplified textbook example) is usually
+wrapped in JIT/gradient/expectation-value scaffolding that has NO gate content
+and NO QIR equivalent. A circuit written to return expectation values (common
+when Catalyst is used with `@qjit`) contains many ops beyond the actual gates:
+
+```
+quantum.device shots(%c0_i64) [...]         ; simulator config — NOT a gate
+%0 = quantum.alloc(2) : !quantum.reg        ; register allocation — NOT a gate
+%1 = quantum.extract %0[0] : ...            ; qubit reference — NOT a gate
+%out = quantum.custom "Hadamard"() %1 : ... ; <-- THIS is the only real gate op
+%3 = quantum.namedobs %out[PauliZ] : ...    ; observable definition — NOT a gate
+%4 = quantum.expval %3 : f64                ; expectation value readout — NOT a gate
+%from_elements = tensor.from_elements %4 : ...  ; tensor packaging — NOT a gate
+%7 = quantum.insert %0[0], %out : ...       ; write qubit back to register — NOT a gate
+quantum.dealloc %8 : !quantum.reg           ; register deallocation — NOT a gate
+quantum.device_release                      ; simulator teardown — NOT a gate
+```
+
+Out of every op in a real Catalyst kernel, ONLY `quantum.custom "<GateName>"()`
+(the actual gate) and `quantum.measure` (the actual measurement) translate to
+QIR calls. Every other op listed above — `device`, `alloc`, `extract`,
+`namedobs`, `expval`, `insert`, `dealloc`, `device_release`, and any
+`tensor.*`/`arith.*` op — is bookkeeping around the circuit and must be
+SKIPPED ENTIRELY. Do NOT invent QIR calls like `__quantum__qis__namedobs__body`
+or `__quantum__qis__expval__body` — these have no QIR equivalent. If you see
+`quantum.namedobs`/`quantum.expval` at the end of a circuit, that circuit is
+being measured for an expectation value rather than sampled directly — still
+translate it as: apply the real gates in order, then `mz` every qubit that was
+used, exactly as if it had been measured with `quantum.measure`.
+"""
+
+# ── Quake-specific patterns (only injected for dialect == "quake") ────────────
+QUAKE_PATTERNS = """\
+### Quake Qubit Register Extraction (CRITICAL — most common indexing error)
+
+Quake allocates a qubit **register** and extracts individual qubit handles from
+it via `quake.extract_ref %veq[%c]`, where the index is a separate constant SSA
+value. The extraction op is NOT a gate — never emit a QIR call for it.
+
+```
+%0 = quake.alloca !quake.veq<2>
+%c0_i64 = arith.constant 0 : i64
+%1 = quake.extract_ref %0[%c0_i64] : (!quake.veq<2>, i64) -> !quake.ref  ; %1 IS qubit 0 (constant value 0, NOT SSA name "%1")
+quake.h %1 : (!quake.ref) -> ()                                          ; H on qubit 0
+%c1_i64 = arith.constant 1 : i64
+%3 = quake.extract_ref %0[%c1_i64] : (!quake.veq<2>, i64) -> !quake.ref  ; %3 IS qubit 1 (constant value 1)
+quake.x [%2] %3 : (!quake.ref, !quake.ref) -> ()  ; controlled-X (=CNOT): control=%2's qubit, target=%3's qubit
+```
+Correct QIR: `h 0` then `cnot 0 1`. To find the index, trace the SSA value passed
+into `extract_ref`'s brackets back to its `arith.constant N` definition — use N,
+not any SSA variable number.
+
+`quake.x [%ctrl] %target` (an `x`/`y`/`z` op with a bracketed control-qubit list
+before the target) is a CONTROLLED gate, not a bare one-qubit gate: one control
+→ `cnot` (for x) / controlled-Z-style `cz` (for z); do not drop the control and
+emit a plain single-qubit `x`.
+"""
+
+
+def get_qir_reference_context(dialect: str = None) -> str:
+    """Return the QIR reference to inject into the translation prompt.
+
+    Dialect-specific sections (Catalyst/Quake register-extraction syntax and
+    non-gate scaffolding ops) are only included when translating that dialect,
+    so an unrelated circuit (e.g. FTQC) doesn't get its prompt diluted with
+    guidance about ops it will never see.
+    """
+    parts = [GATE_MAPPINGS, QIR_TEMPLATE, CORE_PATTERNS]
+    dialect_lc = (dialect or "").lower()
+    if dialect_lc == "catalyst":
+        parts.append(CATALYST_PATTERNS)
+    elif dialect_lc == "quake":
+        parts.append(QUAKE_PATTERNS)
+    return "\n".join(parts)

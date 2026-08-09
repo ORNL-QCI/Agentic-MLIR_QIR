@@ -108,7 +108,19 @@ plan/
 # Paper sources (NOT distributed with the codebase)
 # ============================================================
 2026_QCE_mlir_to_qir/
+2026_AgenticAI4HPC_mlir_to_qir/
 docs/
+
+# Paper figures (LaTeX/PowerPoint sources built alongside the manuscript)
+figures/
+
+# ============================================================
+# Zenodo artifact snapshot
+# ============================================================
+# A packaged copy of the source tree, regenerated per release and uploaded to
+# Zenodo directly. Kept out of the repository so it cannot silently drift from
+# the live sources it duplicates.
+zenodo_artifact/
 
 # LaTeX auxiliary files (in case a .tex slips through)
 *.aux

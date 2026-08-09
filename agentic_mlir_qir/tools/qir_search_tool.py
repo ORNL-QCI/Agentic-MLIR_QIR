@@ -7,7 +7,13 @@ in its prompt context; this tool lets it do targeted lookups when needed.
 
 import logging
 from crewai.tools import BaseTool
-from .qir_reference import GATE_MAPPINGS, QIR_TEMPLATE, TRANSLATION_PATTERNS
+from .qir_reference import (
+    GATE_MAPPINGS,
+    QIR_TEMPLATE,
+    CORE_PATTERNS,
+    CATALYST_PATTERNS,
+    QUAKE_PATTERNS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +21,9 @@ logger = logging.getLogger(__name__)
 _SECTIONS = {
     "gate_mappings": GATE_MAPPINGS,
     "qir_template": QIR_TEMPLATE,
-    "translation_patterns": TRANSLATION_PATTERNS,
+    "translation_patterns": CORE_PATTERNS,
+    "catalyst_patterns": CATALYST_PATTERNS,
+    "quake_patterns": QUAKE_PATTERNS,
 }
 
 

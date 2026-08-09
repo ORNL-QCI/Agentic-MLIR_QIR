@@ -582,6 +582,23 @@ def _is_complete_qir(text: str) -> bool:
     return has_types and has_declare and has_attributes
 
 
+# Recognized QIR gate intrinsics. Anything else appearing as
+# __quantum__qis__<suffix>__body is a hallucinated intrinsic — most commonly
+# an LLM transliterating a non-gate MLIR op (e.g. Quake's extract_ref, or
+# alloca) directly into QIR call syntax instead of recognizing it as register
+# bookkeeping with no QIR equivalent.
+_VALID_GATE_SUFFIXES = frozenset({
+    'h', 'x', 'y', 'z', 's', 't', 'rx', 'ry', 'rz', 'cnot', 'cz', 'swap', 'mz',
+})
+
+
+def _find_invalid_gate_calls(text: str) -> list[str]:
+    """Return distinct __quantum__qis__<suffix>__body suffixes not in the
+    recognized QIR gate vocabulary."""
+    found = set(re.findall(r'__quantum__qis__(\w+?)__body', text))
+    return sorted(found - _VALID_GATE_SUFFIXES)
+
+
 def _extract_ops_from_llvm_ir(text: str) -> list[str]:
     """Extract gate call statements from incomplete LLVM IR for reassembly."""
     ops = []
@@ -590,6 +607,18 @@ def _extract_ops_from_llvm_ir(text: str) -> list[str]:
         if stripped.startswith("call void @__quantum__qis__") and "__body" in stripped:
             ops.append(stripped)
     return ops
+
+
+def _drop_invalid_gate_calls(ops: list[str]) -> list[str]:
+    """Filter out gate calls that use a hallucinated (non-QIR) intrinsic."""
+    kept = []
+    for op in ops:
+        m = re.search(r'__quantum__qis__(\w+?)__body', op)
+        if m and m.group(1) not in _VALID_GATE_SUFFIXES:
+            logger.warning("Guardrail: dropping hallucinated intrinsic call: %s", op)
+            continue
+        kept.append(op)
+    return kept
 
 
 def _apply_output_guardrail(raw: str) -> str:
@@ -612,11 +641,27 @@ def _apply_output_guardrail(raw: str) -> str:
     if text.lstrip().startswith("; ModuleID") or text.lstrip().startswith("define void"):
         cleaned = _extract_qir(text)
         if cleaned:
-            if _is_complete_qir(cleaned):
+            invalid = _find_invalid_gate_calls(cleaned)
+            if invalid:
+                # The LLM hallucinated non-QIR intrinsics (e.g. transliterated
+                # extract_ref/alloca directly into a call). Structural
+                # completeness checks alone would pass this through unchanged,
+                # so filter to only recognized gate calls and reassemble
+                # rather than emitting bogus intrinsics as if they were gates.
+                logger.warning(
+                    "Output guardrail: hallucinated intrinsics %s in otherwise-complete "
+                    "IR, filtering and reassembling", invalid,
+                )
+                ir_ops = _drop_invalid_gate_calls(_extract_ops_from_llvm_ir(cleaned))
+                if ir_ops:
+                    qir = assemble_qir_from_operations(ir_ops)
+                    if qir:
+                        return qir
+            elif _is_complete_qir(cleaned):
                 logger.info("Output guardrail: complete LLVM IR detected")
                 return cleaned
             # ── 2. Incomplete LLVM IR — extract gate calls and reassemble ──
-            ir_ops = _extract_ops_from_llvm_ir(cleaned)
+            ir_ops = _drop_invalid_gate_calls(_extract_ops_from_llvm_ir(cleaned))
             if ir_ops:
                 logger.info("Output guardrail: incomplete LLVM IR with %d gate calls, reassembling", len(ir_ops))
                 qir = assemble_qir_from_operations(ir_ops)
@@ -636,11 +681,11 @@ def _apply_output_guardrail(raw: str) -> str:
     # ── 4. Try _extract_qir for markdown/prose wrapped IR ──
     cleaned = _extract_qir(text)
     if cleaned and ("__quantum__" in cleaned or "define void" in cleaned):
-        if _is_complete_qir(cleaned):
+        if not _find_invalid_gate_calls(cleaned) and _is_complete_qir(cleaned):
             logger.info("Output guardrail: extracted complete LLVM IR from wrapped output")
             return cleaned
         # Try reassembly from incomplete wrapped IR
-        ir_ops = _extract_ops_from_llvm_ir(cleaned)
+        ir_ops = _drop_invalid_gate_calls(_extract_ops_from_llvm_ir(cleaned))
         if ir_ops:
             logger.info("Output guardrail: reassembling from %d extracted gate calls", len(ir_ops))
             qir = assemble_qir_from_operations(ir_ops)
@@ -738,7 +783,10 @@ class TranslationAgent:
             )
 
         # ── Inline QIR reference (context engineering: inject, don't retrieve) ──
-        qir_ref = get_qir_reference_context()
+        # Dialect-specific sections only for known dialects — an unrelated
+        # circuit (e.g. FTQC) should not get its prompt diluted with
+        # Catalyst/Quake-specific guidance it will never need.
+        qir_ref = get_qir_reference_context(None if dialect_is_unknown else dialect)
 
         parts.append(
             "OUTPUT FORMAT (choose one):\n"

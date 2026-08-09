@@ -236,7 +236,7 @@ class CrewManager:
             })
 
             # Build feedback and retry
-            feedback_str = self._build_feedback_string(vr, agent_check)
+            feedback_str = self._build_feedback_string(vr, agent_check, mlir_code, qir_code)
             logger.info(f"Feedback for iteration {iteration + 1}:\n{feedback_str}")
             previous_qir = qir_code
 
@@ -326,7 +326,10 @@ class CrewManager:
     #  Private helpers                                                     #
     # ------------------------------------------------------------------ #
 
-    def _build_feedback_string(self, vr: dict, agent_check: dict) -> str:
+    def _build_feedback_string(
+        self, vr: dict, agent_check: dict,
+        mlir_code: str = "", qir_code: str = "",
+    ) -> str:
         """Synthesise deterministic + agent verification into repair instructions."""
         parts = []
 
@@ -380,7 +383,51 @@ class CrewManager:
         if agent_fb and agent_fb.lower() not in ('translation verified', ''):
             parts.append(f"AGENT ANALYSIS: {agent_fb}")
 
+        # Qubit-count sanity check: catches wrong-qubit-index errors that gate
+        # TYPE-count comparison misses entirely (e.g. correct h=1,cnot=1 counts
+        # but applied to the wrong/an extra qubit index).
+        qubit_mismatch = self._check_qubit_count_mismatch(mlir_code, qir_code)
+        if qubit_mismatch:
+            parts.append(qubit_mismatch)
+
         return "\n".join(parts) if parts else "Unknown verification failure."
+
+    @staticmethod
+    def _check_qubit_count_mismatch(mlir_code: str, qir_code: str) -> Optional[str]:
+        """Compare the qubit register size declared in the MLIR source against
+        the QIR's required_num_qubits attribute.
+
+        Gate-type-count comparison alone is blind to a translation that uses
+        the right gate types the right number of times but on the wrong (or
+        an extra, hallucinated) qubit index — this catches that case.
+        """
+        if not mlir_code or not qir_code:
+            return None
+        src_n = None
+        m = re.search(r'quantum\.alloc\(\s*(\d+)\s*\)', mlir_code)
+        if m:
+            src_n = int(m.group(1))
+        else:
+            m = re.search(r'!quake\.veq<\s*(\d+)\s*>', mlir_code)
+            if m:
+                src_n = int(m.group(1))
+        if src_n is None:
+            return None
+        m = re.search(r'required_num_qubits["\']?\s*=\s*"?(\d+)"?', qir_code)
+        if not m:
+            return None
+        qir_n = int(m.group(1))
+        if qir_n == src_n:
+            return None
+        return (
+            f"QUBIT COUNT MISMATCH: the source MLIR allocates exactly {src_n} qubit(s), "
+            f"but your QIR declares required_num_qubits={qir_n}. Valid qubit indices are "
+            f"0..{src_n - 1} ONLY. You used an index that does not exist in the source, or "
+            f"invented an extra qubit. Re-check every register-extraction op in the MLIR "
+            f"(e.g. `quantum.extract %reg[N]` or `quake.extract_ref %veq[%c]` where %c is "
+            f"an `arith.constant N`) and use exactly N as the qubit index — never the SSA "
+            f"variable's own number."
+        )
 
     def _attach_web_tools(self) -> None:
         """Append web-search and simulator discovery tools to the translation agent (idempotent)."""

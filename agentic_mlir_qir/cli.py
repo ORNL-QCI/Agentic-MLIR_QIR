@@ -12,11 +12,16 @@ Usage examples
   # Write QIR to a file (metadata printed to stdout)
   python translate.py circuit.mlir -o circuit.ll
 
-  # Use the agentic pipeline with a local Ollama model
-  python translate.py circuit.mlir --model llama3.1-8b
+  # Unknown dialect — routes to the agentic pipeline automatically, using the
+  # default model chain (gemma4-31b-hf → gpt-oss-20b → llama3.1-8b)
+  python translate.py example/ftqc_mlir/steane_2q_bell.mlir
 
-  # Use the free GPT-OSS model via HuggingFace (requires HF_TOKEN)
-  python translate.py circuit.mlir --model gpt-oss-20b
+  # Force the agentic pipeline on a known dialect (same default chain)
+  python translate.py circuit.mlir --force-agentic
+
+  # Pin a specific model instead of the default chain
+  python translate.py circuit.mlir --model gemma4-31b-hf
+  python translate.py circuit.mlir --model llama3.1-8b
 
   # Skip simulation verification (faster)
   python translate.py circuit.mlir --no-verify
@@ -39,6 +44,16 @@ from pathlib import Path
 # When invoked as the installed entry point, write logs/ and example_run_info/
 # next to the user's current working directory rather than into site-packages.
 _ROOT = Path.cwd()
+
+# ── Environment ───────────────────────────────────────────────────────────────
+# Load .env so HF_TOKEN (and friends) are visible to the default-model resolver,
+# matching what the Streamlit UI already does. python-dotenv is optional here:
+# an explicitly exported token works either way.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_ROOT / ".env")
+except ImportError:
+    pass
 
 # ── ANSI colour helpers ────────────────────────────────────────────────────────
 _USE_COLOUR = True
@@ -351,6 +366,29 @@ def _run_agentic(
     }
 
 
+def _dispatch_agentic(mlir_code: str, model_key: str, args: argparse.Namespace) -> dict:
+    """Run the agentic route, muting CrewAI chatter for --json/--quiet.
+
+    Shared by both agentic entry points: an explicit --model / --force-agentic
+    run, and the unknown-dialect fallback.
+    """
+    saved_stdout = None
+    if args.json or args.quiet:
+        saved_stdout = sys.stdout
+        sys.stdout = open(os.devnull, "w")
+    try:
+        if args.no_verify:
+            return _run_agentic_no_verify(mlir_code, model_key, args.max_iterations)
+        return _run_agentic(
+            mlir_code, model_key, args.max_iterations, args.shots,
+            force_agentic=args.force_agentic,
+        )
+    finally:
+        if saved_stdout is not None:
+            sys.stdout.close()
+            sys.stdout = saved_stdout
+
+
 def _run_agentic_no_verify(mlir_code: str, model_key: str, max_iterations: int) -> dict:
     """Agentic translation without simulation verification (faster)."""
     from agentic_mlir_qir.agents.crew_manager import CrewManager
@@ -405,14 +443,16 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--model", metavar="MODEL_KEY", default=None,
         help=(
-            "Enable the agentic pipeline with this model key "
-            "(e.g. llama3.1-8b, gpt-oss-20b). "
-            "Without this flag only the deterministic parser is used."
+            "Force the agentic pipeline to use this model key "
+            "(e.g. gemma4-31b-hf, gpt-oss-20b, llama3.1-8b). "
+            "Without this flag, known dialects still take the deterministic "
+            "path; the agentic route picks a model from the default chain "
+            "(run --list-models to see options)."
         ),
     )
     p.add_argument(
         "--max-iterations", type=int, default=5, metavar="N",
-        help="Max agent refinement iterations (default: 5, only used with --model)",
+        help="Max agent refinement iterations (default: 5, agentic route only)",
     )
     p.add_argument(
         "--shots", type=int, default=1000, metavar="N",
@@ -422,7 +462,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force-agentic", action="store_true",
         help=(
             "Force LLM translation even for known dialects (skip deterministic parser). "
-            "Requires --model. Useful for benchmarking LLM performance."
+            "Uses --model if given, otherwise the default model chain. "
+            "Useful for benchmarking LLM performance."
         ),
     )
     p.add_argument(
@@ -546,58 +587,71 @@ def main() -> int:
     # When QIR goes to a file, metadata prints to stdout; otherwise metadata → stderr
     meta_stream = sys.stdout if (args.output or args.json) else sys.stderr
 
+    # ── Resolve which model the agentic route should use ───────────────────────
+    # --model always wins. Otherwise the agentic route (an explicit
+    # --force-agentic, or an unknown dialect falling through below) uses the
+    # default-model chain from LLMConfig.
+    # NOTE: deliberately NOT wired into --model's argparse default — `if model_key:`
+    # gates the agentic path, so a flag-level default would send every run,
+    # including known dialects, through the LLM.
+    from agentic_mlir_qir.config.llm_config import LLMConfig
+    model_key = args.model
+    if model_key is None and args.force_agentic:
+        model_key = LLMConfig.resolve_default_model()
+
     # ── Translate ──────────────────────────────────────────────────────────────
     t0 = time.time()
     verification_time_s = 0.0
     try:
-        if args.model:
-            # Suppress CrewAI verbose output when --json is requested
-            _saved_stdout = None
-            if args.json or args.quiet:
-                _saved_stdout = sys.stdout
-                sys.stdout = open(os.devnull, 'w')
-            try:
-                if args.no_verify:
-                    result = _run_agentic_no_verify(mlir_code, args.model, args.max_iterations)
-                else:
-                    result = _run_agentic(
-                        mlir_code, args.model, args.max_iterations, args.shots,
-                        force_agentic=args.force_agentic,
-                    )
-            finally:
-                if _saved_stdout is not None:
-                    sys.stdout.close()
-                    sys.stdout = _saved_stdout
+        if model_key:
+            result = _dispatch_agentic(mlir_code, model_key, args)
         else:
             try:
                 result = _run_deterministic(mlir_code)
             except Exception as exc:
                 from agentic_mlir_qir.dialects.base_dialect import UnsupportedDialectError
-                if isinstance(exc, UnsupportedDialectError):
+                if not isinstance(exc, UnsupportedDialectError):
+                    raise
+                # Unknown dialect — fall through to the agentic route rather than
+                # giving up, using the default-model chain.
+                model_key = LLMConfig.resolve_default_model()
+                if not args.quiet and not args.json:
                     print(
-                        f"{RED('Error:')} unrecognized MLIR dialect — "
-                        "use --model <key> to enable the agentic pipeline "
+                        DIM(
+                            "Unrecognized MLIR dialect — routing to the agentic "
+                            f"pipeline with {model_key}."
+                        ),
+                        file=sys.stderr,
+                    )
+                try:
+                    result = _dispatch_agentic(mlir_code, model_key, args)
+                except Exception as agentic_exc:
+                    print(
+                        f"{RED('Error:')} unrecognized MLIR dialect, and the agentic "
+                        f"fallback ({model_key}) failed: {agentic_exc}\n"
+                        "Pass --model <key> explicitly "
                         "(run --list-models to see options).",
                         file=sys.stderr,
                     )
                     return 2
-                raise
-
-            # Deterministic path — run verification unless skipped
-            if not args.no_verify:
-                tv0 = time.time()
-                if args.gate_only:
-                    # Gate comparison only — no quantum simulation
-                    result["verification_result"] = None  # no simulation
-                else:
-                    from agentic_mlir_qir.verification.pipeline import run_verification_pipeline
-                    if not args.quiet and not args.json:
-                        print("Running simulation verification…", file=meta_stream)
-                    result["verification_result"] = run_verification_pipeline(
-                        mlir_code, result["qir_code"],
-                        shots=args.shots, mode=args.mode,
-                    )
-                verification_time_s = time.time() - tv0
+            else:
+                # Deterministic path — run verification unless skipped.
+                # Only reached when the deterministic parse succeeded; the
+                # agentic route verifies internally, so it must not land here.
+                if not args.no_verify:
+                    tv0 = time.time()
+                    if args.gate_only:
+                        # Gate comparison only — no quantum simulation
+                        result["verification_result"] = None  # no simulation
+                    else:
+                        from agentic_mlir_qir.verification.pipeline import run_verification_pipeline
+                        if not args.quiet and not args.json:
+                            print("Running simulation verification…", file=meta_stream)
+                        result["verification_result"] = run_verification_pipeline(
+                            mlir_code, result["qir_code"],
+                            shots=args.shots, mode=args.mode,
+                        )
+                    verification_time_s = time.time() - tv0
 
     except KeyboardInterrupt:
         print("\nAborted.", file=sys.stderr)
@@ -624,7 +678,7 @@ def main() -> int:
     try:
         run_info_file = _write_run_info(
             source_label=args.input,
-            model_key=args.model,
+            model_key=model_key,
             mlir_code=mlir_code,
             qir_code=qir_code,
             dialect=result.get("dialect", "unknown"),
@@ -650,7 +704,7 @@ def main() -> int:
             "session_id": "cli",
             "source": args.input,
             "source_format": source_format,
-            "model": args.model or "deterministic",
+            "model": model_key or "deterministic",
             "dialect": result.get("dialect", "unknown"),
             "translation_time_s": elapsed,
             "translation_path": result.get("translation_path", "deterministic"),

@@ -77,7 +77,8 @@ def initialize_session_state():
     if 'mlir_input' not in st.session_state:
         st.session_state.mlir_input = ""
     if 'selected_model' not in st.session_state:
-        st.session_state.selected_model = "llama3.1-8b"
+        from agentic_mlir_qir.config.llm_config import LLMConfig
+        st.session_state.selected_model = LLMConfig.resolve_default_model()
     if 'session_id' not in st.session_state:
         st.session_state.session_id = uuid.uuid4().hex[:8]
 
