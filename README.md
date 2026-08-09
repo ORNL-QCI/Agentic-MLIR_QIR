@@ -19,7 +19,7 @@ QIR on independent simulators and compares the resulting bitstring
 distributions via total variation distance (TVD).
 
 This repository accompanies the paper "Agentic MLIR-to-QIR Translation with
-Verification: A Hybrid Deterministic and LLM Approach".
+Dual-Backend Testing: A Hybrid Deterministic and LLM Approach".
 
 ---
 
@@ -193,7 +193,7 @@ under active development; later releases may require minor adaptation.
 ```bibtex
 @inproceedings{afrose2026agentic,
   author    = {Sharmin Afrose and Vicente Leyton-Ortega and Narasinga Rao Miniskar and Elaine Wong and Travis S. Humble},
-  title     = {Agentic MLIR-to-QIR Translation with Verification: A Hybrid Deterministic and LLM Approach},
+  title     = {Agentic MLIR-to-QIR Translation with Dual-Backend Testing: A Hybrid Deterministic and LLM Approach},
   year      = {2026}
 }
 ```
