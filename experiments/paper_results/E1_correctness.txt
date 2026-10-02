@@ -2,9 +2,30 @@ E1 — Translation Correctness (example/ only, final)
 ============================================================
 
 catalyst shots: 33 total, 33 gate OK, 17 simulated, avg=97.0%, min=91.9%
-quake shots: 35 total, 35 gate OK, 18 simulated, avg=97.9%, min=92.6%
+quake shots: 37 total, 37 gate OK, 20 simulated, avg=97.5%, min=93.7%
 catalyst probs: 33 total, 33 gate OK, 17 simulated, avg=99.3%, min=96.3%
-quake probs: 35 total, 35 gate OK, 18 simulated, avg=98.4%, min=95.1%
+quake probs: 37 total, 37 gate OK, 19 simulated, avg=98.5%, min=94.5%
 
-AGGREGATE: 68 total, 68 gate OK (100%)
->>> Paper Table V, lines 535-538
+AGGREGATE: 70 total, 70 gate OK (100%)
+>>> Paper Table V (tab:e1)
+
+Excluded from Simulated/TVD (both modes, both dialects where present):
+code_random_circuit_1847, code_random_circuit_2449 (correct gate counts,
+near-0% TVD from an MLIR-side mid-circuit-measurement reconstruction gap).
+Quake additionally excludes code_mbqc_cnot (same root cause).
+Quake probs additionally excludes code_shor_orderfinding: qir-runner's
+120s subprocess timeout on its 100K-shot QIR-side simulation falls back
+to a mock result (qir_is_mock: true). Its shots-mode result (93.7%) is
+real and included.
+
+CHANGE LOG (this update):
+- Added code_grover_3q.mlir and code_shor_orderfinding.mlir to
+  example/quake_mlir/ (copied from example/qiskit_algorithms/{grover,shor}
+  /03_quake.mlir). Quake circuit count: 35 -> 37. Total pairs: 68 -> 70.
+- Reran quake_shots.jsonl and quake_probs.jsonl in full (all 37 circuits,
+  including the 35 pre-existing ones) to keep the file internally
+  consistent. Catalyst files were NOT rerun (unchanged, 33 circuits).
+- Re-derivation verified against the raw JSONL via
+  experiments/results/e1/{catalyst,quake}_{shots,probs}.jsonl using
+  sorted(glob(*.mlir)) + sorted(glob(ghz/*.mlir)) as the file order,
+  matching translate.py's own invocation order in run_e1_correctness.sh.

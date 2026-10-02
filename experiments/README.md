@@ -61,10 +61,21 @@ script. Pre-computed summary files used in the paper are kept in
 bash experiments/run_e1_correctness.sh
 ```
 
-* Inputs: 33 Catalyst circuits + 35 Quake circuits (68 dialect-circuit pairs).
+* Inputs: 33 Catalyst circuits + 37 Quake circuits (70 dialect-circuit pairs).
+  Quake includes `code_grover_3q.mlir` and `code_shor_orderfinding.mlir`
+  (added after the paper's initial submission — copied from
+  `example/qiskit_algorithms/{grover,shor}/03_quake.mlir` into
+  `example/quake_mlir/` so they run as part of the standard E1 sweep;
+  see Table III's "Algorithms" category).
 * Modes: `shots` (1024 samples per backend) and `probs` (state-vector reference).
 * Output: `experiments/results/e1/{catalyst,quake}_{shots,probs}.jsonl`.
 * Wall time: ~30 min.
+* Excluded from Simulated/TVD statistics (Table V): `code_random_circuit_1847`,
+  `code_random_circuit_2449` (both dialects), `code_mbqc_cnot` (Quake) — correct
+  gate counts but near-0% TVD from an MLIR-side mid-circuit-measurement gap.
+  `code_shor_orderfinding` is additionally excluded in Quake probs mode only:
+  its 100K-shot QIR-side simulation exceeds `qir-runner`'s timeout and falls
+  back to a mock result; its shots-mode result (93.7%) is real.
 
 ### E2 — Scalability
 
@@ -154,15 +165,23 @@ python3 example/qiskit_algorithms/build_pipeline.py
   `03_quake.mlir`, `04_qir.ll` + `04_result.json` (full `translate.py
   --json` output).
 * Wall time: <1 min (Grover), ~1–2 min (Shor).
-* Results at last run: Grover 53/53 gate match, 99.99% TVD
-  (`--mode probs`); Shor 390/390 gate match, 96.9% TVD (`--shots 8000`
-  — see notes below for why not `--mode probs`).
+* **These circuits are now permanent members of the E1 benchmark.** After
+  generating `03_quake.mlir` via this pipeline, the files were copied
+  (unmodified) into `example/quake_mlir/` as `code_grover_3q.mlir` and
+  `code_shor_orderfinding.mlir`, so `run_e1_correctness.sh` picks them up
+  automatically (Quake count: 35 → 37; see E1 above and Table III's
+  "Algorithms" category). The numbers reported in the paper (Table V/§V-A)
+  come from that standard E1 sweep (`--shots 1000`/`--mode probs`), not
+  from this standalone script's `--shots 8000` special case: Grover
+  53/53 gates, 99.9% TVD (shots) / 98.6% (probs); Shor 390/390 gates,
+  93.7% TVD (shots) — its probs-mode result hits the `qir-runner` timeout
+  described in E1 above and is excluded, not a real number.
 
 ### E6 — Path 3 (repair) stress test
 
 By default Path 3 (agentic repair) is never triggered on the E1–E3
 benchmark, since the deterministic path achieves 100% gate-level
-correctness on all 68 pairs. To exercise it, run the two circuits already
+correctness on all 70 pairs. To exercise it, run the two circuits already
 known to fail testing (correct gate counts, ≈0% TVD — see E1's "Notes and
 known limitations" above) through the agentic pipeline instead of the
 deterministic-only path:
@@ -197,7 +216,19 @@ The `--force-agentic` flag routes a *recognized* dialect through Path 2
 (the LLM agent) instead of Path 1 (the deterministic compiler), letting
 agentic output be benchmarked against a known-correct deterministic
 reference on the same circuit. We used it on the Bell state circuit,
-which Path 1 translates exactly:
+which Path 1 translates exactly.
+
+```bash
+bash experiments/run_e7_forced_agentic.sh
+```
+
+The driver first captures the Path 1 output as the ground truth, then runs
+each model with `--force-agentic` (2 repeats per circuit) and scores the
+result against that reference on gate counts, TVD, and wall time. Results
+land in `experiments/results/e7/`; `analyze_results.py` has no `e7` mode yet,
+so inspect the JSONL directly.
+
+The equivalent manual invocations:
 
 ```bash
 python3 translate.py example/catalyst_mlir/code_bell.mlir --model llama3.1-8b --force-agentic --json

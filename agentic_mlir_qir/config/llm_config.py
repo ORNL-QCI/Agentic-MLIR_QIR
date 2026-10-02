@@ -56,6 +56,16 @@ class LLMConfig:
             ollama_name='llama3.1:8b',
             provider='ollama',
         ),
+        'gemma4-31b': ModelInfo(
+            size='31B',
+            quantization='4-bit',
+            vram='~20GB',
+            quality='excellent',
+            speed='medium',
+            recommended_for='local Path 3 repair testing without HuggingFace credits',
+            ollama_name='gemma4:31b-it-q4_K_M',
+            provider='ollama',
+        ),
         'codellama-13b': ModelInfo(
             size='13B',
             quantization='none',
